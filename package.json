@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "name": "nlang",
+  "name": "n-lang",
   "description": "A basic functional programming language built on top of Typescript",
   "main": "src/main.ts",
   "scripts": {
