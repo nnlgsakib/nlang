@@ -1,0 +1,3 @@
+cvar y = fs.write("x.txt","324234342342342343") rn
+cvar x = fs.read("x.txt") rn
+out(x)

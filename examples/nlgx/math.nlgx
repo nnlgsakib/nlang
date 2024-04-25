@@ -1,0 +1,9 @@
+// math example 
+
+
+cvar x = 5 rn
+cvar y = 3 rn
+cvar z = ghost.sqrt(x,y) rn 
+out(z)
+
+out(ghost.pi)

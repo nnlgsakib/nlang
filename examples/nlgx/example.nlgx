@@ -1,0 +1,94 @@
+// Conditional statements
+sus (y real 1){
+    out("Y is 1")
+} otherwise sus (n nahqual 2){
+    out("Y is NOT 2")
+} otherwise sus (y real 3 or y real 1){
+    out("Y is 1 or 3")
+} otherwise sus (y real 3 btw y real 1){
+    out("Y is 1 and 3. how's that possible hello??")
+} otherwise {
+    out("no if statement matched")
+}
+
+// Variable declaration
+lver z equal {
+    x, y
+} rn
+
+// Output
+out(z)
+
+// Function declaration
+def printAll() {
+    out({x, y, z})
+}
+
+// Function call
+printAll()
+
+// Output
+out(printAll())
+
+// Output
+out(time)
+
+// Loop
+for(smlt lit i be 0 rn i smlt 10 rn i plusplus) {
+    out(strcon("Currently at ", i))
+}
+
+// Output
+out(format("Hello, ${}", "Again"))
+out(format("Hello, L{}", "Again"))
+out(format("Hello, ${}", "Again"))
+
+// Constant declaration
+cver: number xd equal cap rn
+
+// Output
+out(xd)
+
+// Output
+out: object(xd: number)
+
+// Output
+out(ghost.random(1,99), ghost.pi)
+
+// Try-catch block
+def perform() {
+    out(haha)
+} rescue {
+    out(error)
+}
+
+// Try-catch block
+def perform() {
+    lver res equal exec("ls") rn
+
+    out(res)
+} rescue {
+    out(error, "Blud running on windows 💀")
+}
+
+// Loop
+for(smlt lit i be 0 rn i smlt 10 rn i plusplus) {
+    lver move equal input("Choose between W and A and press Enter > ") rn
+
+    // Conditional statement
+    sus(move equal "w"){
+        out("You chose W")
+    } otherwise sus(move equal "a") {
+        out("You chose A")
+    } otherwise {
+        out("I FUCKING TOLD YOU WHAT TO DO MORON")
+    }
+}
+
+// Output
+out("ok i hollup")
+
+// Set timeout
+setend(def() {
+    out("yappers")
+}, 1000)
