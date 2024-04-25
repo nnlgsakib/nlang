@@ -1,14 +1,17 @@
 {
-  "version": "1.0.0",
-  "name": "n-lang",
+  "version": "1.0.2",
+  "name": "nlang-ts",
   "description": "A basic functional programming language built on top of Typescript",
-  "main": "src/main.ts",
+  "main": "dist/main.js",
   "scripts": {
-    "nlg": "npx ts-node src/main.ts",
+    "nlang": "npx ts-node src/main.ts",
     "build": "tsc --build"
   },
+  "files": [
+    "dist"
+  ],
   "bin": {
-    "nlg": "./dist/main.js"
+    "nlang": "./dist/main.js"
   },
   "dependencies": {
     "axios": "^1.6.8",
