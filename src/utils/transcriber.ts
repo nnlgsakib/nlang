@@ -95,9 +95,10 @@ export function transcribe(code: string, currency: string) {
         .replace_fr("escape", "exit")
         .replace_fr("setend", "setTimeout")
         .replace_fr("setint", "setInterval")
-        .replace_fr("hash_it", "hash")
-        .replace_fr("encrypt_it", "encrypt")
-        .replace_fr("decrypt_it", "decrypt")
+        // .replace_fr("hash_it", "hash")
+        // .replace_fr("encrypt_it", "encrypt")
+        // .replace_fr("decrypt_it", "decrypt")
+        // help me to make it more rich 
         .replace(/: number/g, '')
         .replace(/: string/g, '')
         .replace(/: object/g, '')

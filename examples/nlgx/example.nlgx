@@ -57,7 +57,7 @@ out(ghost.random(1,99), ghost.pi)
 
 // Try-catch block
 def perform() {
-    out(haha)
+    out("haha")
 } rescue {
     out(error)
 }

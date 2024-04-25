@@ -42,7 +42,7 @@ for(let i = 0; i < 10; i++){
 println(format("Hello, ${}", "Again"))
 
 try {
-    println(haha)
+    println("haha")
 } catch {
     println(error)
 }
