@@ -1,7 +1,10 @@
 {
-  "version": "1.6",
+  "version": "1.0",
   "scripts": {
     "nlang": "npx ts-node src/main.ts"
+  },
+  "bin": {
+    "nlang": "./dist/main.js"
   },
   "devDependencies": {
     "@types/node": "^20.9.0",
