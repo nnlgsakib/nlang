@@ -1,5 +1,5 @@
 {
-  "version": "1.0.6",
+  "version": "1.0.8",
   "name": "nlang-ts",
   "description": "A basic functional programming language built on top of Typescript",
   "main": "dist/main.js",
