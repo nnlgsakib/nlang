@@ -33,7 +33,7 @@ async function run(filename: string) {
     
     let currency = "-";
     if (filename.endsWith('.nlgx')) {
-        const currencies = JSON.parse(readFileSync(__dirname + "/../src/utils/currencies.json", "utf-8")); // should work for /src/ and /dist/
+        const currencies = JSON.parse(readFileSync(__dirname + "/../src/utils/currencies.json", "utf-8")) || JSON.parse(readFileSync(__dirname + "utils/currencies.json", "utf-8")); // should work for /src/ and /dist/
         currency = await get_currency(currencies);
         input = transcribe(input, currency);
     }
