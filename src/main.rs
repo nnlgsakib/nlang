@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(name = "nlang")]
-#[command(about = "A new programming language with Python-like syntax compiled to machine code using LLVM")]
+#[command(about = "A new programming language with Python-like syntax compiled to machine code using C")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -29,17 +29,6 @@ enum Commands {
         input: PathBuf,
     },
     
-    /// Generate LLVM IR from an Nlang file
-    #[command(alias = "ir")]
-    GenerateIr {
-        /// Input file to generate IR from
-        input: PathBuf,
-        
-        /// Output IR file name (optional)
-        #[arg(short, long)]
-        output: Option<PathBuf>,
-    },
-    
     /// Generate C code from an Nlang file
     #[command(alias = "c-gen")]
     GenerateC {
@@ -61,9 +50,6 @@ fn main() -> anyhow::Result<()> {
         }
         Commands::Run { input } => {
             nlang::cli::run(input)?;
-        }
-        Commands::GenerateIr { input, output } => {
-            nlang::cli::generate_ir(input, output)?;
         }
         Commands::GenerateC { input, output } => {
             nlang::cli::generate_c(input, output)?;

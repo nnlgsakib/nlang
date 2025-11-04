@@ -1,0 +1,1 @@
+ cd d:/projects/rust/nlang ; foreach ($file in Get-ChildItem nlang_test_writes/*.nlang) { $outfile = "nlang_test_writes/generated/ir/$($file.BaseName).ll"; Write-Host "Generating $($file.Name) -> $($file.BaseName).ll" -ForegroundColor Cyan; ./target/debug/nlang.exe generate-ir $file.FullName --output $outfile }
