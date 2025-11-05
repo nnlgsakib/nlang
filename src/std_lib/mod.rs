@@ -80,9 +80,75 @@ impl StdLib {
                 },
                 BuiltInFunction {
                     name: "str".to_string(),
+                    parameters: vec![Type::I8],
+                    return_type: Type::String,
+                    implementation: builtin_str_i8,
+                },
+                BuiltInFunction {
+                    name: "str".to_string(),
+                    parameters: vec![Type::I16],
+                    return_type: Type::String,
+                    implementation: builtin_str_i16,
+                },
+                BuiltInFunction {
+                    name: "str".to_string(),
+                    parameters: vec![Type::I32],
+                    return_type: Type::String,
+                    implementation: builtin_str_i32,
+                },
+                BuiltInFunction {
+                    name: "str".to_string(),
+                    parameters: vec![Type::I64],
+                    return_type: Type::String,
+                    implementation: builtin_str_i64,
+                },
+                BuiltInFunction {
+                    name: "str".to_string(),
+                    parameters: vec![Type::ISize],
+                    return_type: Type::String,
+                    implementation: builtin_str_isize,
+                },
+                BuiltInFunction {
+                    name: "str".to_string(),
+                    parameters: vec![Type::U8],
+                    return_type: Type::String,
+                    implementation: builtin_str_u8,
+                },
+                BuiltInFunction {
+                    name: "str".to_string(),
+                    parameters: vec![Type::U16],
+                    return_type: Type::String,
+                    implementation: builtin_str_u16,
+                },
+                BuiltInFunction {
+                    name: "str".to_string(),
+                    parameters: vec![Type::U32],
+                    return_type: Type::String,
+                    implementation: builtin_str_u32,
+                },
+                BuiltInFunction {
+                    name: "str".to_string(),
+                    parameters: vec![Type::U64],
+                    return_type: Type::String,
+                    implementation: builtin_str_u64,
+                },
+                BuiltInFunction {
+                    name: "str".to_string(),
+                    parameters: vec![Type::USize],
+                    return_type: Type::String,
+                    implementation: builtin_str_usize,
+                },
+                BuiltInFunction {
+                    name: "str".to_string(),
                     parameters: vec![Type::Float],
                     return_type: Type::String,
                     implementation: builtin_str_from_float,
+                },
+                BuiltInFunction {
+                    name: "str".to_string(),
+                    parameters: vec![Type::Boolean],
+                    return_type: Type::String,
+                    implementation: builtin_str_from_bool,
                 },
                 BuiltInFunction {
                     name: "float".to_string(),
@@ -350,6 +416,105 @@ fn builtin_str(args: &[Expr]) -> Result<Expr, String> {
     
     let num = extract_integer_value(&args[0])?;
     Ok(Expr::Literal(Literal::String(num.to_string())))
+}
+
+fn builtin_str_i8(args: &[Expr]) -> Result<Expr, String> {
+    if args.len() != 1 {
+        return Err("str() takes exactly 1 argument".to_string());
+    }
+    
+    let num = extract_integer_value(&args[0])?;
+    Ok(Expr::Literal(Literal::String(num.to_string())))
+}
+
+fn builtin_str_i16(args: &[Expr]) -> Result<Expr, String> {
+    if args.len() != 1 {
+        return Err("str() takes exactly 1 argument".to_string());
+    }
+    
+    let num = extract_integer_value(&args[0])?;
+    Ok(Expr::Literal(Literal::String(num.to_string())))
+}
+
+fn builtin_str_i32(args: &[Expr]) -> Result<Expr, String> {
+    if args.len() != 1 {
+        return Err("str() takes exactly 1 argument".to_string());
+    }
+    
+    let num = extract_integer_value(&args[0])?;
+    Ok(Expr::Literal(Literal::String(num.to_string())))
+}
+
+fn builtin_str_i64(args: &[Expr]) -> Result<Expr, String> {
+    if args.len() != 1 {
+        return Err("str() takes exactly 1 argument".to_string());
+    }
+    
+    let num = extract_integer_value(&args[0])?;
+    Ok(Expr::Literal(Literal::String(num.to_string())))
+}
+
+fn builtin_str_isize(args: &[Expr]) -> Result<Expr, String> {
+    if args.len() != 1 {
+        return Err("str() takes exactly 1 argument".to_string());
+    }
+    
+    let num = extract_integer_value(&args[0])?;
+    Ok(Expr::Literal(Literal::String(num.to_string())))
+}
+
+fn builtin_str_u8(args: &[Expr]) -> Result<Expr, String> {
+    if args.len() != 1 {
+        return Err("str() takes exactly 1 argument".to_string());
+    }
+    
+    let num = extract_integer_value(&args[0])?;
+    Ok(Expr::Literal(Literal::String(num.to_string())))
+}
+
+fn builtin_str_u16(args: &[Expr]) -> Result<Expr, String> {
+    if args.len() != 1 {
+        return Err("str() takes exactly 1 argument".to_string());
+    }
+    
+    let num = extract_integer_value(&args[0])?;
+    Ok(Expr::Literal(Literal::String(num.to_string())))
+}
+
+fn builtin_str_u32(args: &[Expr]) -> Result<Expr, String> {
+    if args.len() != 1 {
+        return Err("str() takes exactly 1 argument".to_string());
+    }
+    
+    let num = extract_integer_value(&args[0])?;
+    Ok(Expr::Literal(Literal::String(num.to_string())))
+}
+
+fn builtin_str_u64(args: &[Expr]) -> Result<Expr, String> {
+    if args.len() != 1 {
+        return Err("str() takes exactly 1 argument".to_string());
+    }
+    
+    let num = extract_integer_value(&args[0])?;
+    Ok(Expr::Literal(Literal::String(num.to_string())))
+}
+
+fn builtin_str_usize(args: &[Expr]) -> Result<Expr, String> {
+    if args.len() != 1 {
+        return Err("str() takes exactly 1 argument".to_string());
+    }
+    
+    let num = extract_integer_value(&args[0])?;
+    Ok(Expr::Literal(Literal::String(num.to_string())))
+}
+
+fn builtin_str_from_bool(args: &[Expr]) -> Result<Expr, String> {
+    if args.len() != 1 {
+        return Err("str() takes exactly 1 argument".to_string());
+    }
+    
+    let bool_val = extract_boolean_value(&args[0])?;
+    Ok(Expr::Literal(Literal::String(bool_val.to_string())))
 }
 
 fn builtin_str_from_float(args: &[Expr]) -> Result<Expr, String> {

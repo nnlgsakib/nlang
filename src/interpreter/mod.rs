@@ -414,6 +414,15 @@ impl Interpreter {
                 match literal {
                     Literal::Integer(i) => Ok(Value::Integer(*i)),
                     Literal::I32(i) => Ok(Value::Integer(*i as i64)), // Convert i32 to i64 for interpreter
+                    Literal::I8(i) => Ok(Value::Integer(*i as i64)),
+                    Literal::I16(i) => Ok(Value::Integer(*i as i64)),
+                    Literal::I64(i) => Ok(Value::Integer(*i)),
+                    Literal::ISize(i) => Ok(Value::Integer(*i as i64)),
+                    Literal::U8(i) => Ok(Value::Integer(*i as i64)),
+                    Literal::U16(i) => Ok(Value::Integer(*i as i64)),
+                    Literal::U32(i) => Ok(Value::Integer(*i as i64)),
+                    Literal::U64(i) => Ok(Value::Integer(*i as i64)),
+                    Literal::USize(i) => Ok(Value::Integer(*i as i64)),
                     Literal::Float(f) => Ok(Value::Float(*f)),
                     Literal::Boolean(b) => Ok(Value::Boolean(*b)),
                     Literal::String(s) => Ok(Value::String(s.clone())),

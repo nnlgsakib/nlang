@@ -1,0 +1,179 @@
+// Integer Data Types Test
+// This program demonstrates various integer data types and their operations in nlang
+// Tests the enhanced type compatibility system for all integer types
+
+def main() {
+    println("=== Integer Data Types Test ===");
+    println("");
+    
+    // Basic integer declarations
+    println("Basic Integer Declarations:");
+    store regular_int = 42;
+    store i8_val = 127i8;
+    store i16_val = 32767i16;
+    store i32_val = 2147483647i32;
+    store i64_val = 9223372036854775807i64;
+    store isize_val = 100isize;
+    
+    store u8_val = 255u8;
+    store u16_val = 65535u16;
+    store u32_val = 4294967295u32;
+    store u64_val = 18446744073709551615u64;
+    store usize_val = 200usize;
+    
+    print("regular_int: ");
+    println(str(regular_int));
+    print("i8_val: ");
+    println(str(i8_val));
+    print("i16_val: ");
+    println(str(i16_val));
+    print("i32_val: ");
+    println(str(i32_val));
+    print("i64_val: ");
+    println(str(i64_val));
+    print("isize_val: ");
+    println(str(isize_val));
+    
+    print("u8_val: ");
+    println(str(u8_val));
+    print("u16_val: ");
+    println(str(u16_val));
+    print("u32_val: ");
+    println(str(u32_val));
+    print("u64_val: ");
+    println(str(u64_val));
+    print("usize_val: ");
+    println(str(usize_val));
+    
+    println("");
+    
+    // Arithmetic operations with different integer types
+    println("Arithmetic Operations:");
+    
+    // Addition
+    store sum1 = regular_int + i32_val;
+    store sum2 = i16_val + u8_val;
+    store sum3 = u32_val + isize_val;
+    
+    print("regular_int + i32_val = ");
+    println(str(sum1));
+    print("i16_val + u8_val = ");
+    println(str(sum2));
+    print("u32_val + isize_val = ");
+    println(str(sum3));
+    
+    // Subtraction
+    store diff1 = i64_val - i32_val;
+    store diff2 = u16_val - u8_val;
+    store diff3 = regular_int - isize_val;
+    
+    print("i64_val - i32_val = ");
+    println(str(diff1));
+    print("u16_val - u8_val = ");
+    println(str(diff2));
+    print("regular_int - isize_val = ");
+    println(str(diff3));
+    
+    // Multiplication
+    store prod1 = i8_val * 2;
+    store prod2 = u16_val * u8_val;
+    store prod3 = regular_int * i32_val;
+    
+    print("i8_val * 2 = ");
+    println(str(prod1));
+    print("u16_val * u8_val = ");
+    println(str(prod2));
+    print("regular_int * i32_val = ");
+    println(str(prod3));
+    
+    // Division
+    store div1 = u32_val / 2;
+    store div2 = i64_val / i32_val;
+    store div3 = regular_int / 3;
+    
+    print("u32_val / 2 = ");
+    println(str(div1));
+    print("i64_val / i32_val = ");
+    println(str(div2));
+    print("regular_int / 3 = ");
+    println(str(div3));
+    
+    println("");
+    
+    // Comparison operations
+    println("Comparison Operations:");
+    
+    store cmp1 = i32_val > regular_int;
+    store cmp2 = u16_val == 65535;
+    store cmp3 = i8_val < u8_val;
+    store cmp4 = isize_val != 150;
+    
+    print("i32_val > regular_int: ");
+    println(str(cmp1));
+    print("u16_val == 65535: ");
+    println(str(cmp2));
+    print("i8_val < u8_val: ");
+    println(str(cmp3));
+    print("isize_val != 150: ");
+    println(str(cmp4));
+    
+    println("");
+    
+    // Mixed type operations with floats
+    println("Mixed Type Operations:");
+    
+    store float_val = 3.14;
+    store mixed1 = regular_int + float_val;
+    store mixed2 = i32_val * float_val;
+    store mixed3 = u16_val - float_val;
+    
+    print("regular_int + 3.14 = ");
+    println(str(mixed1));
+    print("i32_val * 3.14 = ");
+    println(str(mixed2));
+    print("u16_val - 3.14 = ");
+    println(str(mixed3));
+    
+    println("");
+    
+    // Function calls with different integer types
+    println("Function Calls:");
+    
+    store result1 = double_value(regular_int);
+    store result2 = double_value(i16_val);
+    store result3 = double_value(u32_val);
+    
+    print("double_value(regular_int): ");
+    println(str(result1));
+    print("double_value(i16_val): ");
+    println(str(result2));
+    print("double_value(u32_val): ");
+    println(str(result3));
+    
+    println("");
+    
+    // Edge cases and boundaries
+    println("Edge Cases:");
+    
+    store min_i8 = -128i8;
+    store max_i8 = 127i8;
+    store min_u8 = 0u8;
+    store max_u8 = 255u8;
+    
+    print("min_i8: ");
+    println(str(min_i8));
+    print("max_i8: ");
+    println(str(max_i8));
+    print("min_u8: ");
+    println(str(min_u8));
+    print("max_u8: ");
+    println(str(max_u8));
+    
+    println("");
+    println("=== Test Completed Successfully ===");
+}
+
+// Helper function to demonstrate type compatibility in function parameters
+def double_value(x) {
+    return x * 2;
+}

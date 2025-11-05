@@ -221,8 +221,26 @@ impl<'a> Parser<'a> {
     fn parse_type(&mut self) -> Result<Type, ParseError> {
         if self.match_identifier("int") {
             Ok(Type::Integer)
+        } else if self.match_identifier("i8") {
+            Ok(Type::I8)
+        } else if self.match_identifier("i16") {
+            Ok(Type::I16)
         } else if self.match_identifier("i32") {
             Ok(Type::I32)
+        } else if self.match_identifier("i64") {
+            Ok(Type::I64)
+        } else if self.match_identifier("isize") {
+            Ok(Type::ISize)
+        } else if self.match_identifier("u8") {
+            Ok(Type::U8)
+        } else if self.match_identifier("u16") {
+            Ok(Type::U16)
+        } else if self.match_identifier("u32") {
+            Ok(Type::U32)
+        } else if self.match_identifier("u64") {
+            Ok(Type::U64)
+        } else if self.match_identifier("usize") {
+            Ok(Type::USize)
         } else if self.match_identifier("float") {
             Ok(Type::Float)
         } else if self.match_identifier("bool") {
@@ -652,10 +670,73 @@ impl<'a> Parser<'a> {
             }
         }
         
+        if self.match_token(&TokenType::I8Literal(0)) {
+            let token = self.previous();
+            if let TokenType::I8Literal(value) = token.token_type.clone() {
+                return Ok(Expr::Literal(Literal::I8(value)));
+            }
+        }
+        
+        if self.match_token(&TokenType::I16Literal(0)) {
+            let token = self.previous();
+            if let TokenType::I16Literal(value) = token.token_type.clone() {
+                return Ok(Expr::Literal(Literal::I16(value)));
+            }
+        }
+        
         if self.match_token(&TokenType::I32Literal(0)) {
             let token = self.previous();
             if let TokenType::I32Literal(value) = token.token_type.clone() {
                 return Ok(Expr::Literal(Literal::I32(value)));
+            }
+        }
+        
+        if self.match_token(&TokenType::I64Literal(0)) {
+            let token = self.previous();
+            if let TokenType::I64Literal(value) = token.token_type.clone() {
+                return Ok(Expr::Literal(Literal::I64(value)));
+            }
+        }
+        
+        if self.match_token(&TokenType::ISizeLiteral(0)) {
+            let token = self.previous();
+            if let TokenType::ISizeLiteral(value) = token.token_type.clone() {
+                return Ok(Expr::Literal(Literal::ISize(value)));
+            }
+        }
+        
+        if self.match_token(&TokenType::U8Literal(0)) {
+            let token = self.previous();
+            if let TokenType::U8Literal(value) = token.token_type.clone() {
+                return Ok(Expr::Literal(Literal::U8(value)));
+            }
+        }
+        
+        if self.match_token(&TokenType::U16Literal(0)) {
+            let token = self.previous();
+            if let TokenType::U16Literal(value) = token.token_type.clone() {
+                return Ok(Expr::Literal(Literal::U16(value)));
+            }
+        }
+        
+        if self.match_token(&TokenType::U32Literal(0)) {
+            let token = self.previous();
+            if let TokenType::U32Literal(value) = token.token_type.clone() {
+                return Ok(Expr::Literal(Literal::U32(value)));
+            }
+        }
+        
+        if self.match_token(&TokenType::U64Literal(0)) {
+            let token = self.previous();
+            if let TokenType::U64Literal(value) = token.token_type.clone() {
+                return Ok(Expr::Literal(Literal::U64(value)));
+            }
+        }
+        
+        if self.match_token(&TokenType::USizeLiteral(0)) {
+            let token = self.previous();
+            if let TokenType::USizeLiteral(value) = token.token_type.clone() {
+                return Ok(Expr::Literal(Literal::USize(value)));
             }
         }
         

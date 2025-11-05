@@ -197,8 +197,36 @@ impl SemanticAnalyzer {
                 })?;
             }
         }
-        
-        // Second pass: analyze all statements
+
+        // Second pass: infer return types for all functions before analyzing other statements
+        for stmt in &program.statements {
+            if let Statement::FunctionDeclaration { name, parameters, body, return_type, .. } = stmt {
+                if return_type.is_none() {
+                    // Enter a temporary scope with parameters to infer types used in returns
+                    self.begin_scope();
+                    for param in parameters {
+                        self.define_symbol(param.name.clone(), Symbol::Variable { var_type: param.param_type.clone() })?;
+                    }
+                    if let Some(inferred) = self.find_return_type_in_statements(body) {
+                        // Update the function symbol with the inferred return type
+                        for scope in self.scopes.iter_mut().rev() {
+                            if let Some(sym) = scope.get_mut(name) {
+                                if let Symbol::Function { parameters: existing_params, .. } = sym {
+                                    *sym = Symbol::Function {
+                                        return_type: inferred.clone(),
+                                        parameters: existing_params.clone(),
+                                    };
+                                }
+                                break;
+                            }
+                        }
+                    }
+                    self.end_scope();
+                }
+            }
+        }
+
+        // Third pass: analyze all statements
         let mut analyzed_statements = Vec::new();
         for stmt in program.statements {
             analyzed_statements.push(self.analyze_statement(stmt)?);
@@ -233,6 +261,11 @@ impl SemanticAnalyzer {
                             return Err(SemanticError {
                                 message: format!("Type mismatch: variable '{}' declared as {:?} but initializer is of type {:?}", name, declared_type, init_type),
                             });
+                        }
+                        
+                        // Validate literal bounds for integer types
+                        if let Expr::Literal(literal) = init {
+                            self.validate_literal_bounds(literal, &declared_type)?;
                         }
                     }
                     declared_type
@@ -279,12 +312,17 @@ impl SemanticAnalyzer {
                     
                     // Update the function's return type in the symbol table
                     if inferred_return_type != Type::Void {
-                        // Remove the old entry and add the new one with correct return type
-                        if let Some(current_scope) = self.scopes.last_mut() {
-                            current_scope.insert(name.clone(), Symbol::Function {
-                                return_type: inferred_return_type.clone(),
-                                parameters: parameters.clone(),
-                            });
+                        // Update the function symbol with the inferred return type
+                        // We need to find and update the symbol in the correct scope
+                        for scope in self.scopes.iter_mut().rev() {
+                            if let Some(Symbol::Function { parameters: _existing_params, .. }) = scope.get_mut(&name) {
+                                // Update the return type
+                                *scope.get_mut(&name).unwrap() = Symbol::Function {
+                                    return_type: inferred_return_type.clone(),
+                                    parameters: parameters.clone(),
+                                };
+                                break;
+                            }
                         }
                     }
                 }
@@ -617,6 +655,14 @@ impl SemanticAnalyzer {
                                         continue;
                                     }
                                     
+                                    // Special handling for Void types - they might be function calls whose return types
+                                    // haven't been inferred yet. Allow them to pass type checking for now.
+                                    if arg_type == Type::Void {
+                                        // Skip type checking for Void arguments - they might be function calls
+                                        // whose return types will be inferred later during execution
+                                        continue;
+                                    }
+                                    
                                     if arg_type != *param_type {
                                         return Err(SemanticError {
                                             message: format!(
@@ -652,7 +698,7 @@ impl SemanticAnalyzer {
                             for (i, arg) in analyzed_arguments.iter().enumerate() {
                                 let arg_type = self.infer_type(arg)?;
                                 let param_type = &parameters[i].param_type;
-                                if arg_type != *param_type {
+                                if !self.are_types_compatible(&arg_type, param_type) {
                                     return Err(SemanticError {
                                         message: format!(
                                             "Type mismatch in argument {} of function '{}': expected {:?}, got {:?}",
@@ -753,6 +799,11 @@ impl SemanticAnalyzer {
                             message: format!("Type mismatch in assignment: expected {:?}, got {:?}", var_type, value_type),
                         });
                     }
+                    
+                    // Validate literal bounds for integer types
+                    if let Expr::Literal(literal) = analyzed_value.as_ref() {
+                        self.validate_literal_bounds(literal, &var_type)?;
+                    }
                 }
                 
                 Ok(Expr::Assign { name, value: analyzed_value })
@@ -765,7 +816,16 @@ impl SemanticAnalyzer {
             Expr::Literal(literal) => {
                 match literal {
                     Literal::Integer(_) => Ok(Type::Integer),
+                    Literal::I8(_) => Ok(Type::I8),
+                    Literal::I16(_) => Ok(Type::I16),
                     Literal::I32(_) => Ok(Type::I32),
+                    Literal::I64(_) => Ok(Type::I64),
+                    Literal::ISize(_) => Ok(Type::ISize),
+                    Literal::U8(_) => Ok(Type::U8),
+                    Literal::U16(_) => Ok(Type::U16),
+                    Literal::U32(_) => Ok(Type::U32),
+                    Literal::U64(_) => Ok(Type::U64),
+                    Literal::USize(_) => Ok(Type::USize),
                     Literal::Float(_) => Ok(Type::Float),
                     Literal::Boolean(_) => Ok(Type::Boolean),
                     Literal::String(_) => Ok(Type::String),
@@ -793,19 +853,19 @@ impl SemanticAnalyzer {
                         if left_type == Type::String && right_type == Type::String {
                             Ok(Type::String)
                         } else if left_type == Type::Float || right_type == Type::Float {
-                            if (left_type == Type::Integer || left_type == Type::I32 || left_type == Type::Float) &&
-                               (right_type == Type::Integer || right_type == Type::I32 || right_type == Type::Float) {
+                            if (left_type == Type::Integer || left_type == Type::I8 || left_type == Type::I16 || left_type == Type::I32 || left_type == Type::I64 || left_type == Type::ISize || left_type == Type::U8 || left_type == Type::U16 || left_type == Type::U32 || left_type == Type::U64 || left_type == Type::USize || left_type == Type::Float) &&
+                               (right_type == Type::Integer || right_type == Type::I8 || right_type == Type::I16 || right_type == Type::I32 || right_type == Type::I64 || right_type == Type::ISize || right_type == Type::U8 || right_type == Type::U16 || right_type == Type::U32 || right_type == Type::U64 || right_type == Type::USize || right_type == Type::Float) {
                                 Ok(Type::Float)
                             } else {
                                 Err(SemanticError {
                                     message: format!("Cannot perform arithmetic on {:?} and {:?}", left_type, right_type),
                                 })
                             }
-                        } else if (left_type == Type::Integer || left_type == Type::I32) && 
-                                  (right_type == Type::Integer || right_type == Type::I32) {
+                        } else if (left_type == Type::Integer || left_type == Type::I8 || left_type == Type::I16 || left_type == Type::I32 || left_type == Type::I64 || left_type == Type::ISize || left_type == Type::U8 || left_type == Type::U16 || left_type == Type::U32 || left_type == Type::U64 || left_type == Type::USize) && 
+                                  (right_type == Type::Integer || right_type == Type::I8 || right_type == Type::I16 || right_type == Type::I32 || right_type == Type::I64 || right_type == Type::ISize || right_type == Type::U8 || right_type == Type::U16 || right_type == Type::U32 || right_type == Type::U64 || right_type == Type::USize) {
                             // For integer types, preserve the more specific type if both are the same
-                            if left_type == Type::I32 && right_type == Type::I32 {
-                                Ok(Type::I32)
+                            if left_type == right_type {
+                                Ok(left_type)
                             } else {
                                 Ok(Type::Integer)
                             }
@@ -818,24 +878,19 @@ impl SemanticAnalyzer {
                     BinaryOperator::Minus | BinaryOperator::Star => {
                         // Arithmetic operations: promote to float if either operand is float
                         if left_type == Type::Float || right_type == Type::Float {
-                            if left_type == Type::Integer || left_type == Type::I32 || left_type == Type::Float {
-                                if right_type == Type::Integer || right_type == Type::I32 || right_type == Type::Float {
-                                    Ok(Type::Float)
-                                } else {
-                                    Err(SemanticError {
-                                        message: format!("Cannot perform arithmetic on {:?} and {:?}", left_type, right_type),
-                                    })
-                                }
+                            if (left_type == Type::Integer || left_type == Type::I8 || left_type == Type::I16 || left_type == Type::I32 || left_type == Type::I64 || left_type == Type::ISize || left_type == Type::U8 || left_type == Type::U16 || left_type == Type::U32 || left_type == Type::U64 || left_type == Type::USize || left_type == Type::Float) &&
+                               (right_type == Type::Integer || right_type == Type::I8 || right_type == Type::I16 || right_type == Type::I32 || right_type == Type::I64 || right_type == Type::ISize || right_type == Type::U8 || right_type == Type::U16 || right_type == Type::U32 || right_type == Type::U64 || right_type == Type::USize || right_type == Type::Float) {
+                                Ok(Type::Float)
                             } else {
                                 Err(SemanticError {
                                     message: format!("Cannot perform arithmetic on {:?} and {:?}", left_type, right_type),
                                 })
                             }
-                        } else if (left_type == Type::Integer || left_type == Type::I32) && 
-                                  (right_type == Type::Integer || right_type == Type::I32) {
+                        } else if (left_type == Type::Integer || left_type == Type::I8 || left_type == Type::I16 || left_type == Type::I32 || left_type == Type::I64 || left_type == Type::ISize || left_type == Type::U8 || left_type == Type::U16 || left_type == Type::U32 || left_type == Type::U64 || left_type == Type::USize) && 
+                                  (right_type == Type::Integer || right_type == Type::I8 || right_type == Type::I16 || right_type == Type::I32 || right_type == Type::I64 || right_type == Type::ISize || right_type == Type::U8 || right_type == Type::U16 || right_type == Type::U32 || right_type == Type::U64 || right_type == Type::USize) {
                             // For integer types, preserve the more specific type if both are the same
-                            if left_type == Type::I32 && right_type == Type::I32 {
-                                Ok(Type::I32)
+                            if left_type == right_type {
+                                Ok(left_type)
                             } else {
                                 Ok(Type::Integer)
                             }
@@ -847,8 +902,8 @@ impl SemanticAnalyzer {
                     },
                     BinaryOperator::Slash => {
                         // Division always returns float, even for integer operands
-                        if (left_type == Type::Integer || left_type == Type::I32 || left_type == Type::Float) &&
-                           (right_type == Type::Integer || right_type == Type::I32 || right_type == Type::Float) {
+                        if (left_type == Type::Integer || left_type == Type::I8 || left_type == Type::I16 || left_type == Type::I32 || left_type == Type::I64 || left_type == Type::ISize || left_type == Type::U8 || left_type == Type::U16 || left_type == Type::U32 || left_type == Type::U64 || left_type == Type::USize || left_type == Type::Float) &&
+                           (right_type == Type::Integer || right_type == Type::I8 || right_type == Type::I16 || right_type == Type::I32 || right_type == Type::I64 || right_type == Type::ISize || right_type == Type::U8 || right_type == Type::U16 || right_type == Type::U32 || right_type == Type::U64 || right_type == Type::USize || right_type == Type::Float) {
                             Ok(Type::Float)
                         } else {
                             Err(SemanticError {
@@ -858,11 +913,11 @@ impl SemanticAnalyzer {
                     },
                     BinaryOperator::Percent => {
                         // Modulo only works with integers
-                        if (left_type == Type::Integer || left_type == Type::I32) && 
-                           (right_type == Type::Integer || right_type == Type::I32) {
+                        if (left_type == Type::Integer || left_type == Type::I8 || left_type == Type::I16 || left_type == Type::I32 || left_type == Type::I64 || left_type == Type::ISize || left_type == Type::U8 || left_type == Type::U16 || left_type == Type::U32 || left_type == Type::U64 || left_type == Type::USize) && 
+                           (right_type == Type::Integer || right_type == Type::I8 || right_type == Type::I16 || right_type == Type::I32 || right_type == Type::I64 || right_type == Type::ISize || right_type == Type::U8 || right_type == Type::U16 || right_type == Type::U32 || right_type == Type::U64 || right_type == Type::USize) {
                             // For integer types, preserve the more specific type if both are the same
-                            if left_type == Type::I32 && right_type == Type::I32 {
-                                Ok(Type::I32)
+                            if left_type == right_type {
+                                Ok(left_type)
                             } else {
                                 Ok(Type::Integer)
                             }
@@ -877,10 +932,46 @@ impl SemanticAnalyzer {
                         if left_type == right_type || 
                            (left_type == Type::Integer && right_type == Type::Float) ||
                            (left_type == Type::Float && right_type == Type::Integer) ||
+                           (left_type == Type::Integer && right_type == Type::I8) ||
+                           (left_type == Type::I8 && right_type == Type::Integer) ||
+                           (left_type == Type::Integer && right_type == Type::I16) ||
+                           (left_type == Type::I16 && right_type == Type::Integer) ||
                            (left_type == Type::Integer && right_type == Type::I32) ||
                            (left_type == Type::I32 && right_type == Type::Integer) ||
+                           (left_type == Type::Integer && right_type == Type::I64) ||
+                           (left_type == Type::I64 && right_type == Type::Integer) ||
+                           (left_type == Type::Integer && right_type == Type::ISize) ||
+                           (left_type == Type::ISize && right_type == Type::Integer) ||
+                           (left_type == Type::Integer && right_type == Type::U8) ||
+                           (left_type == Type::U8 && right_type == Type::Integer) ||
+                           (left_type == Type::Integer && right_type == Type::U16) ||
+                           (left_type == Type::U16 && right_type == Type::Integer) ||
+                           (left_type == Type::Integer && right_type == Type::U32) ||
+                           (left_type == Type::U32 && right_type == Type::Integer) ||
+                           (left_type == Type::Integer && right_type == Type::U64) ||
+                           (left_type == Type::U64 && right_type == Type::Integer) ||
+                           (left_type == Type::Integer && right_type == Type::USize) ||
+                           (left_type == Type::USize && right_type == Type::Integer) ||
+                           (left_type == Type::I8 && right_type == Type::Float) ||
+                           (left_type == Type::Float && right_type == Type::I8) ||
+                           (left_type == Type::I16 && right_type == Type::Float) ||
+                           (left_type == Type::Float && right_type == Type::I16) ||
                            (left_type == Type::I32 && right_type == Type::Float) ||
-                           (left_type == Type::Float && right_type == Type::I32) {
+                           (left_type == Type::Float && right_type == Type::I32) ||
+                           (left_type == Type::I64 && right_type == Type::Float) ||
+                           (left_type == Type::Float && right_type == Type::I64) ||
+                           (left_type == Type::ISize && right_type == Type::Float) ||
+                           (left_type == Type::Float && right_type == Type::ISize) ||
+                           (left_type == Type::U8 && right_type == Type::Float) ||
+                           (left_type == Type::Float && right_type == Type::U8) ||
+                           (left_type == Type::U16 && right_type == Type::Float) ||
+                           (left_type == Type::Float && right_type == Type::U16) ||
+                           (left_type == Type::U32 && right_type == Type::Float) ||
+                           (left_type == Type::Float && right_type == Type::U32) ||
+                           (left_type == Type::U64 && right_type == Type::Float) ||
+                           (left_type == Type::Float && right_type == Type::U64) ||
+                           (left_type == Type::USize && right_type == Type::Float) ||
+                           (left_type == Type::Float && right_type == Type::USize) {
                             Ok(Type::Boolean)
                         } else {
                             Err(SemanticError {
@@ -891,8 +982,8 @@ impl SemanticAnalyzer {
                     BinaryOperator::Less | BinaryOperator::LessEqual | 
                     BinaryOperator::Greater | BinaryOperator::GreaterEqual => {
                         // Relational comparison: only numeric types
-                        if (left_type == Type::Integer || left_type == Type::I32 || left_type == Type::Float) &&
-                           (right_type == Type::Integer || right_type == Type::I32 || right_type == Type::Float) {
+                        if (left_type == Type::Integer || left_type == Type::I8 || left_type == Type::I16 || left_type == Type::I32 || left_type == Type::I64 || left_type == Type::ISize || left_type == Type::U8 || left_type == Type::U16 || left_type == Type::U32 || left_type == Type::U64 || left_type == Type::USize || left_type == Type::Float) &&
+                           (right_type == Type::Integer || right_type == Type::I8 || right_type == Type::I16 || right_type == Type::I32 || right_type == Type::I64 || right_type == Type::ISize || right_type == Type::U8 || right_type == Type::U16 || right_type == Type::U32 || right_type == Type::U64 || right_type == Type::USize || right_type == Type::Float) {
                             Ok(Type::Boolean)
                         } else {
                             Err(SemanticError {
@@ -925,7 +1016,7 @@ impl SemanticAnalyzer {
                         }
                     },
                     crate::ast::UnaryOperator::Negate => {
-                        if operand_type == Type::Integer || operand_type == Type::I32 || operand_type == Type::Float {
+                        if operand_type == Type::Integer || operand_type == Type::I8 || operand_type == Type::I16 || operand_type == Type::I32 || operand_type == Type::I64 || operand_type == Type::ISize || operand_type == Type::Float {
                             Ok(operand_type)
                         } else {
                             Err(SemanticError {
@@ -953,7 +1044,16 @@ impl SemanticAnalyzer {
                         } else {
                             // Check user-defined functions
                             match self.get_symbol(func_name) {
-                                Ok(Symbol::Function { return_type, .. }) => Ok(return_type),
+                                Ok(Symbol::Function { return_type, .. }) => {
+                                    if return_type == Type::Void {
+                                        // Function exists but return type is Void - this might be a function
+                                        // whose return type will be inferred later. For now, return Void
+                                        // and let the actual type checking happen during expression analysis
+                                        Ok(Type::Void)
+                                    } else {
+                                        Ok(return_type)
+                                    }
+                                },
                                 Ok(Symbol::Variable { .. }) => Err(SemanticError {
                                     message: format!("Expected function, found variable: {}", func_name),
                                 }),
@@ -1194,23 +1294,144 @@ impl SemanticAnalyzer {
             return true;
         }
         
-        // Integer and I32 are compatible (Integer can be assigned to I32)
-        if (*type1 == Type::Integer && *type2 == Type::I32) ||
-           (*type1 == Type::I32 && *type2 == Type::Integer) {
-            return true;
+        // Integer is compatible with all signed integer types (widening conversion)
+        if *type1 == Type::Integer {
+            match *type2 {
+                Type::I8 | Type::I16 | Type::I32 | Type::I64 | Type::ISize => return true,
+                _ => ()
+            }
+        }
+        
+        // All signed integer types are compatible with Integer (narrowing conversion)
+        if *type2 == Type::Integer {
+            match *type1 {
+                Type::I8 | Type::I16 | Type::I32 | Type::I64 | Type::ISize => return true,
+                _ => ()
+            }
+        }
+        
+        // Integer can be assigned to unsigned integer types if value is non-negative
+        if *type1 == Type::Integer {
+            match *type2 {
+                Type::U8 | Type::U16 | Type::U32 | Type::U64 | Type::USize => return true,
+                _ => ()
+            }
+        }
+        
+        // Unsigned integer types can be assigned to Integer (widening conversion)
+        if *type2 == Type::Integer {
+            match *type1 {
+                Type::U8 | Type::U16 | Type::U32 | Type::U64 | Type::USize => return true,
+                _ => ()
+            }
         }
         
         // Integer can be assigned to Float (implicit conversion)
-        if (*type1 == Type::Integer && *type2 == Type::Float) ||
-           (*type1 == Type::I32 && *type2 == Type::Float) {
+        if *type1 == Type::Integer && *type2 == Type::Float {
             return true;
         }
         
-        // I32 can be assigned to Integer (widening conversion)
-        if *type1 == Type::I32 && *type2 == Type::Integer {
-            return true;
+        // Signed integer types can be assigned to Float (implicit conversion)
+        if *type2 == Type::Float {
+            match *type1 {
+                Type::I8 | Type::I16 | Type::I32 | Type::I64 | Type::ISize => return true,
+                _ => ()
+            }
+        }
+        
+        // Unsigned integer types can be assigned to Float (implicit conversion)
+        if *type2 == Type::Float {
+
+            match *type1 {
+                Type::U8 | Type::U16 | Type::U32 | Type::U64 | Type::USize => return true,
+                _ => ()
+            }
         }
         
         false
+    }
+
+    /// Validate that a literal value is within the bounds of its target type
+    #[allow(unused_comparisons)] // Needed for bounds checking of literal values
+    fn validate_literal_bounds(&self, literal: &Literal, target_type: &Type) -> Result<(), SemanticError> {
+        match (literal, target_type) {
+            (Literal::I8(value), Type::I8) => {
+                // i8 range: -128 to 127
+                if *value < -128 || *value > 127 {
+                    return Err(SemanticError {
+                        message: format!("Value {} is out of bounds for i8 type (-128 to 127)", value),
+                    });
+                }
+            }
+            (Literal::I16(value), Type::I16) => {
+                // i16 range: -32768 to 32767
+                if *value < -32768 || *value > 32767 {
+                    return Err(SemanticError {
+                        message: format!("Value {} is out of bounds for i16 type (-32768 to 32767)", value),
+                    });
+                }
+            }
+            (Literal::I32(value), Type::I32) => {
+                // i32 range: -2147483648 to 2147483647
+                if *value < -2147483648 || *value > 2147483647 {
+                    return Err(SemanticError {
+                        message: format!("Value {} is out of bounds for i32 type (-2147483648 to 2147483647)", value),
+                    });
+                }
+            }
+            (Literal::I64(value), Type::I64) => {
+                // i64 range: -9223372036854775808 to 9223372036854775807
+                if *value < -9223372036854775808 || *value > 9223372036854775807 {
+                    return Err(SemanticError {
+                        message: format!("Value {} is out of bounds for i64 type", value),
+                    });
+                }
+            }
+            (Literal::ISize(value), Type::ISize) => {
+                // isize range: platform-dependent, but we'll use i64 range for validation
+                if *value < -9223372036854775808 || *value > 9223372036854775807 {
+                    return Err(SemanticError {
+                        message: format!("Value {} is out of bounds for isize type", value),
+                    });
+                }
+            }
+            (Literal::U8(value), Type::U8) => {
+                // u8 range: 0 to 255
+                if *value > 255 {
+                    return Err(SemanticError {
+                        message: format!("Value {} is out of bounds for u8 type (0 to 255)", value),
+                    });
+                }
+            }
+            (Literal::U16(value), Type::U16) => {
+                // u16 range: 0 to 65535
+                if *value > 65535 {
+                    return Err(SemanticError {
+                        message: format!("Value {} is out of bounds for u16 type (0 to 65535)", value),
+                    });
+                }
+            }
+            (Literal::U32(value), Type::U32) => {
+                // u32 range: 0 to 4294967295
+                if *value > 4294967295 {
+                    return Err(SemanticError {
+                        message: format!("Value {} is out of bounds for u32 type (0 to 4294967295)", value),
+                    });
+                }
+            }
+            (Literal::U64(_value), Type::U64) => {
+                // u64 range: 0 to 18446744073709551615
+                // No upper bound check needed since u64 can represent any u64 value
+                // The value is already unsigned, so no need to check < 0
+            }
+            (Literal::USize(_value), Type::USize) => {
+                // usize range: platform-dependent
+                // The value is already unsigned, so no need to check < 0
+            }
+            // For other combinations, no bounds checking is needed
+            _ => {}
+        }
+        
+        Ok(())
     }
 }

@@ -8,7 +8,6 @@ clap = { version = "4.0", features = ["derive"] }
 tempfile = "3.0"
 thiserror = "1.0"
 anyhow = "1.0"
-c2rust = "0.21.0"
 prettyplease = "0.2.37"
 codemap = "0.1.3"
 
