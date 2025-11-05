@@ -241,8 +241,13 @@ impl<'a> Parser<'a> {
             Ok(Type::U64)
         } else if self.match_identifier("usize") {
             Ok(Type::USize)
+        } else if self.match_identifier("f32") {
+            Ok(Type::F32)
+        } else if self.match_identifier("f64") {
+            Ok(Type::F64)
         } else if self.match_identifier("float") {
-            Ok(Type::Float)
+            // Legacy alias: treat `float` as f64
+            Ok(Type::F64)
         } else if self.match_identifier("bool") {
             Ok(Type::Boolean)
         } else if self.match_identifier("string") {

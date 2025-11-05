@@ -468,6 +468,8 @@ fn type_to_c(&self, t: &Type) -> String {
         Type::U32 => "uint32_t".into(),
         Type::U64 => "uint64_t".into(),
         Type::USize => "size_t".into(),
+        Type::F32 => "float".into(),
+        Type::F64 => "double".into(),
         Type::Float => "double".into(),
         Type::String => "const char*".into(),
         Type::Boolean => "int".into(),
@@ -543,6 +545,7 @@ fn print_fmt(&self, e: &Expr, code: &str) -> Result<(String, String), CCodeGenEr
             let ty = self.vars.get(v).map(|s| s.as_str()).unwrap_or("int");
             match ty {
                 "int" => ("%d".into(), code.into()),
+                "float" => ("%f".into(), code.into()),
                 "double" => ("%f".into(), code.into()),
                 "char*" => ("%s".into(), code.into()),
                 _ => ("%s".into(), code.into()),

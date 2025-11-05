@@ -73,6 +73,18 @@ impl StdLib {
                     implementation: builtin_int_from_float,
                 },
                 BuiltInFunction {
+                    name: "int".to_string(),
+                    parameters: vec![Type::F32],
+                    return_type: Type::Integer,
+                    implementation: builtin_int_from_float,
+                },
+                BuiltInFunction {
+                    name: "int".to_string(),
+                    parameters: vec![Type::F64],
+                    return_type: Type::Integer,
+                    implementation: builtin_int_from_float,
+                },
+                BuiltInFunction {
                     name: "str".to_string(),
                     parameters: vec![Type::Integer],
                     return_type: Type::String,
@@ -146,6 +158,18 @@ impl StdLib {
                 },
                 BuiltInFunction {
                     name: "str".to_string(),
+                    parameters: vec![Type::F32],
+                    return_type: Type::String,
+                    implementation: builtin_str_from_float,
+                },
+                BuiltInFunction {
+                    name: "str".to_string(),
+                    parameters: vec![Type::F64],
+                    return_type: Type::String,
+                    implementation: builtin_str_from_float,
+                },
+                BuiltInFunction {
+                    name: "str".to_string(),
                     parameters: vec![Type::Boolean],
                     return_type: Type::String,
                     implementation: builtin_str_from_bool,
@@ -153,7 +177,7 @@ impl StdLib {
                 BuiltInFunction {
                     name: "float".to_string(),
                     parameters: vec![Type::String],
-                    return_type: Type::Float,
+                    return_type: Type::F64,
                     implementation: builtin_float,
                 },
                 
@@ -167,7 +191,19 @@ impl StdLib {
                 BuiltInFunction {
                     name: "abs_float".to_string(),
                     parameters: vec![Type::Float],
-                    return_type: Type::Float,
+                    return_type: Type::F64,
+                    implementation: builtin_abs_float,
+                },
+                BuiltInFunction {
+                    name: "abs_float".to_string(),
+                    parameters: vec![Type::F32],
+                    return_type: Type::F64,
+                    implementation: builtin_abs_float,
+                },
+                BuiltInFunction {
+                    name: "abs_float".to_string(),
+                    parameters: vec![Type::F64],
+                    return_type: Type::F64,
                     implementation: builtin_abs_float,
                 },
                 BuiltInFunction {

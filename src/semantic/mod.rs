@@ -580,7 +580,22 @@ impl SemanticAnalyzer {
                     },
                     crate::ast::UnaryOperator::Negate => {
                         let operand_type = self.infer_type(&analyzed_operand)?;
-                        if operand_type != Type::Integer && operand_type != Type::Float {
+                        if !(
+                            operand_type == Type::Integer ||
+                            operand_type == Type::I8 ||
+                            operand_type == Type::I16 ||
+                            operand_type == Type::I32 ||
+                            operand_type == Type::I64 ||
+                            operand_type == Type::ISize ||
+                            operand_type == Type::U8 ||
+                            operand_type == Type::U16 ||
+                            operand_type == Type::U32 ||
+                            operand_type == Type::U64 ||
+                            operand_type == Type::USize ||
+                            operand_type == Type::Float ||
+                            operand_type == Type::F32 ||
+                            operand_type == Type::F64
+                        ) {
                             return Err(SemanticError {
                                 message: "Operand of unary minus must be of numeric type".to_string(),
                             });
@@ -826,7 +841,8 @@ impl SemanticAnalyzer {
                     Literal::U32(_) => Ok(Type::U32),
                     Literal::U64(_) => Ok(Type::U64),
                     Literal::USize(_) => Ok(Type::USize),
-                    Literal::Float(_) => Ok(Type::Float),
+                    // Float literals default to f64
+                    Literal::Float(_) => Ok(Type::F64),
                     Literal::Boolean(_) => Ok(Type::Boolean),
                     Literal::String(_) => Ok(Type::String),
                     Literal::Null => Ok(Type::Void), // Null literals have void type
@@ -852,10 +868,12 @@ impl SemanticAnalyzer {
                         // Plus operator: supports both arithmetic and string concatenation
                         if left_type == Type::String && right_type == Type::String {
                             Ok(Type::String)
-                        } else if left_type == Type::Float || right_type == Type::Float {
-                            if (left_type == Type::Integer || left_type == Type::I8 || left_type == Type::I16 || left_type == Type::I32 || left_type == Type::I64 || left_type == Type::ISize || left_type == Type::U8 || left_type == Type::U16 || left_type == Type::U32 || left_type == Type::U64 || left_type == Type::USize || left_type == Type::Float) &&
-                               (right_type == Type::Integer || right_type == Type::I8 || right_type == Type::I16 || right_type == Type::I32 || right_type == Type::I64 || right_type == Type::ISize || right_type == Type::U8 || right_type == Type::U16 || right_type == Type::U32 || right_type == Type::U64 || right_type == Type::USize || right_type == Type::Float) {
-                                Ok(Type::Float)
+                        } else if left_type == Type::Float || right_type == Type::Float ||
+                                  left_type == Type::F32 || right_type == Type::F32 ||
+                                  left_type == Type::F64 || right_type == Type::F64 {
+                            if (left_type == Type::Integer || left_type == Type::I8 || left_type == Type::I16 || left_type == Type::I32 || left_type == Type::I64 || left_type == Type::ISize || left_type == Type::U8 || left_type == Type::U16 || left_type == Type::U32 || left_type == Type::U64 || left_type == Type::USize || left_type == Type::Float || left_type == Type::F32 || left_type == Type::F64) &&
+                               (right_type == Type::Integer || right_type == Type::I8 || right_type == Type::I16 || right_type == Type::I32 || right_type == Type::I64 || right_type == Type::ISize || right_type == Type::U8 || right_type == Type::U16 || right_type == Type::U32 || right_type == Type::U64 || right_type == Type::USize || right_type == Type::Float || right_type == Type::F32 || right_type == Type::F64) {
+                                Ok(Type::F64)
                             } else {
                                 Err(SemanticError {
                                     message: format!("Cannot perform arithmetic on {:?} and {:?}", left_type, right_type),
@@ -877,10 +895,12 @@ impl SemanticAnalyzer {
                     },
                     BinaryOperator::Minus | BinaryOperator::Star => {
                         // Arithmetic operations: promote to float if either operand is float
-                        if left_type == Type::Float || right_type == Type::Float {
-                            if (left_type == Type::Integer || left_type == Type::I8 || left_type == Type::I16 || left_type == Type::I32 || left_type == Type::I64 || left_type == Type::ISize || left_type == Type::U8 || left_type == Type::U16 || left_type == Type::U32 || left_type == Type::U64 || left_type == Type::USize || left_type == Type::Float) &&
-                               (right_type == Type::Integer || right_type == Type::I8 || right_type == Type::I16 || right_type == Type::I32 || right_type == Type::I64 || right_type == Type::ISize || right_type == Type::U8 || right_type == Type::U16 || right_type == Type::U32 || right_type == Type::U64 || right_type == Type::USize || right_type == Type::Float) {
-                                Ok(Type::Float)
+                        if left_type == Type::Float || right_type == Type::Float ||
+                           left_type == Type::F32 || right_type == Type::F32 ||
+                           left_type == Type::F64 || right_type == Type::F64 {
+                            if (left_type == Type::Integer || left_type == Type::I8 || left_type == Type::I16 || left_type == Type::I32 || left_type == Type::I64 || left_type == Type::ISize || left_type == Type::U8 || left_type == Type::U16 || left_type == Type::U32 || left_type == Type::U64 || left_type == Type::USize || left_type == Type::Float || left_type == Type::F32 || left_type == Type::F64) &&
+                               (right_type == Type::Integer || right_type == Type::I8 || right_type == Type::I16 || right_type == Type::I32 || right_type == Type::I64 || right_type == Type::ISize || right_type == Type::U8 || right_type == Type::U16 || right_type == Type::U32 || right_type == Type::U64 || right_type == Type::USize || right_type == Type::Float || right_type == Type::F32 || right_type == Type::F64) {
+                                Ok(Type::F64)
                             } else {
                                 Err(SemanticError {
                                     message: format!("Cannot perform arithmetic on {:?} and {:?}", left_type, right_type),
@@ -902,9 +922,9 @@ impl SemanticAnalyzer {
                     },
                     BinaryOperator::Slash => {
                         // Division always returns float, even for integer operands
-                        if (left_type == Type::Integer || left_type == Type::I8 || left_type == Type::I16 || left_type == Type::I32 || left_type == Type::I64 || left_type == Type::ISize || left_type == Type::U8 || left_type == Type::U16 || left_type == Type::U32 || left_type == Type::U64 || left_type == Type::USize || left_type == Type::Float) &&
-                           (right_type == Type::Integer || right_type == Type::I8 || right_type == Type::I16 || right_type == Type::I32 || right_type == Type::I64 || right_type == Type::ISize || right_type == Type::U8 || right_type == Type::U16 || right_type == Type::U32 || right_type == Type::U64 || right_type == Type::USize || right_type == Type::Float) {
-                            Ok(Type::Float)
+                        if (left_type == Type::Integer || left_type == Type::I8 || left_type == Type::I16 || left_type == Type::I32 || left_type == Type::I64 || left_type == Type::ISize || left_type == Type::U8 || left_type == Type::U16 || left_type == Type::U32 || left_type == Type::U64 || left_type == Type::USize || left_type == Type::Float || left_type == Type::F32 || left_type == Type::F64) &&
+                           (right_type == Type::Integer || right_type == Type::I8 || right_type == Type::I16 || right_type == Type::I32 || right_type == Type::I64 || right_type == Type::ISize || right_type == Type::U8 || right_type == Type::U16 || right_type == Type::U32 || right_type == Type::U64 || right_type == Type::USize || right_type == Type::Float || right_type == Type::F32 || right_type == Type::F64) {
+                            Ok(Type::F64)
                         } else {
                             Err(SemanticError {
                                 message: format!("Cannot perform division on {:?} and {:?}", left_type, right_type),
@@ -932,6 +952,13 @@ impl SemanticAnalyzer {
                         if left_type == right_type || 
                            (left_type == Type::Integer && right_type == Type::Float) ||
                            (left_type == Type::Float && right_type == Type::Integer) ||
+                           (left_type == Type::Integer && (right_type == Type::F32 || right_type == Type::F64)) ||
+                           ((left_type == Type::F32 || left_type == Type::F64) && right_type == Type::Integer) ||
+                           // Cross-float width comparisons
+                           (left_type == Type::F32 && right_type == Type::F64) ||
+                           (left_type == Type::F64 && right_type == Type::F32) ||
+                           (left_type == Type::Float && (right_type == Type::F32 || right_type == Type::F64)) ||
+                           ((left_type == Type::F32 || left_type == Type::F64) && right_type == Type::Float) ||
                            (left_type == Type::Integer && right_type == Type::I8) ||
                            (left_type == Type::I8 && right_type == Type::Integer) ||
                            (left_type == Type::Integer && right_type == Type::I16) ||
@@ -952,26 +979,26 @@ impl SemanticAnalyzer {
                            (left_type == Type::U64 && right_type == Type::Integer) ||
                            (left_type == Type::Integer && right_type == Type::USize) ||
                            (left_type == Type::USize && right_type == Type::Integer) ||
-                           (left_type == Type::I8 && right_type == Type::Float) ||
-                           (left_type == Type::Float && right_type == Type::I8) ||
-                           (left_type == Type::I16 && right_type == Type::Float) ||
-                           (left_type == Type::Float && right_type == Type::I16) ||
-                           (left_type == Type::I32 && right_type == Type::Float) ||
-                           (left_type == Type::Float && right_type == Type::I32) ||
-                           (left_type == Type::I64 && right_type == Type::Float) ||
-                           (left_type == Type::Float && right_type == Type::I64) ||
-                           (left_type == Type::ISize && right_type == Type::Float) ||
-                           (left_type == Type::Float && right_type == Type::ISize) ||
-                           (left_type == Type::U8 && right_type == Type::Float) ||
-                           (left_type == Type::Float && right_type == Type::U8) ||
-                           (left_type == Type::U16 && right_type == Type::Float) ||
-                           (left_type == Type::Float && right_type == Type::U16) ||
-                           (left_type == Type::U32 && right_type == Type::Float) ||
-                           (left_type == Type::Float && right_type == Type::U32) ||
-                           (left_type == Type::U64 && right_type == Type::Float) ||
-                           (left_type == Type::Float && right_type == Type::U64) ||
-                           (left_type == Type::USize && right_type == Type::Float) ||
-                           (left_type == Type::Float && right_type == Type::USize) {
+                           (left_type == Type::I8 && (right_type == Type::Float || right_type == Type::F32 || right_type == Type::F64)) ||
+                           ((left_type == Type::Float || left_type == Type::F32 || left_type == Type::F64) && right_type == Type::I8) ||
+                           (left_type == Type::I16 && (right_type == Type::Float || right_type == Type::F32 || right_type == Type::F64)) ||
+                           ((left_type == Type::Float || left_type == Type::F32 || left_type == Type::F64) && right_type == Type::I16) ||
+                           (left_type == Type::I32 && (right_type == Type::Float || right_type == Type::F32 || right_type == Type::F64)) ||
+                           ((left_type == Type::Float || left_type == Type::F32 || left_type == Type::F64) && right_type == Type::I32) ||
+                           (left_type == Type::I64 && (right_type == Type::Float || right_type == Type::F32 || right_type == Type::F64)) ||
+                           ((left_type == Type::Float || left_type == Type::F32 || left_type == Type::F64) && right_type == Type::I64) ||
+                           (left_type == Type::ISize && (right_type == Type::Float || right_type == Type::F32 || right_type == Type::F64)) ||
+                           ((left_type == Type::Float || left_type == Type::F32 || left_type == Type::F64) && right_type == Type::ISize) ||
+                           (left_type == Type::U8 && (right_type == Type::Float || right_type == Type::F32 || right_type == Type::F64)) ||
+                           ((left_type == Type::Float || left_type == Type::F32 || left_type == Type::F64) && right_type == Type::U8) ||
+                           (left_type == Type::U16 && (right_type == Type::Float || right_type == Type::F32 || right_type == Type::F64)) ||
+                           ((left_type == Type::Float || left_type == Type::F32 || left_type == Type::F64) && right_type == Type::U16) ||
+                           (left_type == Type::U32 && (right_type == Type::Float || right_type == Type::F32 || right_type == Type::F64)) ||
+                           ((left_type == Type::Float || left_type == Type::F32 || left_type == Type::F64) && right_type == Type::U32) ||
+                           (left_type == Type::U64 && (right_type == Type::Float || right_type == Type::F32 || right_type == Type::F64)) ||
+                           ((left_type == Type::Float || left_type == Type::F32 || left_type == Type::F64) && right_type == Type::U64) ||
+                           (left_type == Type::USize && (right_type == Type::Float || right_type == Type::F32 || right_type == Type::F64)) ||
+                           ((left_type == Type::Float || left_type == Type::F32 || left_type == Type::F64) && right_type == Type::USize) {
                             Ok(Type::Boolean)
                         } else {
                             Err(SemanticError {
@@ -982,8 +1009,11 @@ impl SemanticAnalyzer {
                     BinaryOperator::Less | BinaryOperator::LessEqual | 
                     BinaryOperator::Greater | BinaryOperator::GreaterEqual => {
                         // Relational comparison: only numeric types
-                        if (left_type == Type::Integer || left_type == Type::I8 || left_type == Type::I16 || left_type == Type::I32 || left_type == Type::I64 || left_type == Type::ISize || left_type == Type::U8 || left_type == Type::U16 || left_type == Type::U32 || left_type == Type::U64 || left_type == Type::USize || left_type == Type::Float) &&
-                           (right_type == Type::Integer || right_type == Type::I8 || right_type == Type::I16 || right_type == Type::I32 || right_type == Type::I64 || right_type == Type::ISize || right_type == Type::U8 || right_type == Type::U16 || right_type == Type::U32 || right_type == Type::U64 || right_type == Type::USize || right_type == Type::Float) {
+                        if (
+                            left_type == Type::Integer || left_type == Type::I8 || left_type == Type::I16 || left_type == Type::I32 || left_type == Type::I64 || left_type == Type::ISize || left_type == Type::U8 || left_type == Type::U16 || left_type == Type::U32 || left_type == Type::U64 || left_type == Type::USize || left_type == Type::Float || left_type == Type::F32 || left_type == Type::F64
+                        ) && (
+                            right_type == Type::Integer || right_type == Type::I8 || right_type == Type::I16 || right_type == Type::I32 || right_type == Type::I64 || right_type == Type::ISize || right_type == Type::U8 || right_type == Type::U16 || right_type == Type::U32 || right_type == Type::U64 || right_type == Type::USize || right_type == Type::Float || right_type == Type::F32 || right_type == Type::F64
+                        ) {
                             Ok(Type::Boolean)
                         } else {
                             Err(SemanticError {
@@ -1326,26 +1356,34 @@ impl SemanticAnalyzer {
             }
         }
         
-        // Integer can be assigned to Float (implicit conversion)
-        if *type1 == Type::Integer && *type2 == Type::Float {
+        // Integer can be assigned to Float types (implicit conversion)
+        if *type1 == Type::Integer && (*type2 == Type::Float || *type2 == Type::F32 || *type2 == Type::F64) {
             return true;
         }
         
-        // Signed integer types can be assigned to Float (implicit conversion)
-        if *type2 == Type::Float {
+        // Signed integer types can be assigned to Float types (implicit conversion)
+        if *type2 == Type::Float || *type2 == Type::F32 || *type2 == Type::F64 {
             match *type1 {
                 Type::I8 | Type::I16 | Type::I32 | Type::I64 | Type::ISize => return true,
                 _ => ()
             }
         }
         
-        // Unsigned integer types can be assigned to Float (implicit conversion)
-        if *type2 == Type::Float {
-
+        // Unsigned integer types can be assigned to Float types (implicit conversion)
+        if *type2 == Type::Float || *type2 == Type::F32 || *type2 == Type::F64 {
             match *type1 {
                 Type::U8 | Type::U16 | Type::U32 | Type::U64 | Type::USize => return true,
                 _ => ()
             }
+        }
+
+        // Allow assigning f64 to f32 (narrowing) and legacy Float to either
+        if (*type1 == Type::F64 && *type2 == Type::F32) || (*type1 == Type::Float && (*type2 == Type::F32 || *type2 == Type::F64)) {
+            return true;
+        }
+        // Allow assigning f32 to f64 (widening)
+        if *type1 == Type::F32 && *type2 == Type::F64 {
+            return true;
         }
         
         false
