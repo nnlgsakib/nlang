@@ -3,6 +3,16 @@ mod lexer_tests {
     use crate::lexer::{tokenize, TokenType};
     
     #[test]
+    fn test_arrow_token() {
+        let source = "def process_i32(x: i32) -> i32 { return x + 1i32; }";
+        let tokens = tokenize(source).unwrap();
+        
+        for token in tokens {
+            println!("{:?} '{}' at line {}", token.token_type, token.lexeme, token.line);
+        }
+    }
+
+    #[test]
     fn test_basic_tokenization() {
         let source = "store x = 42;";
         let tokens = tokenize(source).unwrap();
@@ -45,5 +55,14 @@ mod lexer_tests {
         assert_eq!(tokens[5].token_type, TokenType::Star);
         assert_eq!(tokens[7].token_type, TokenType::Slash);
         assert_eq!(tokens[9].token_type, TokenType::Percent);
+    }
+
+    #[test]
+    fn test_i32_literal() {
+        let source = "store x = 42i32; store y = -123i32;";
+        let tokens = tokenize(source).unwrap();
+        
+        assert_eq!(tokens[3].token_type, TokenType::I32Literal(42));
+        assert_eq!(tokens[8].token_type, TokenType::I32Literal(-123));
     }
 }

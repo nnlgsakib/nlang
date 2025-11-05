@@ -28,6 +28,7 @@ pub enum TokenType {
     Identifier(String),
     String(String),
     Integer(i64),
+    I32Literal(i32),
     Float(f64),
     
     // Operators
@@ -58,6 +59,7 @@ pub enum TokenType {
     Semicolon,
     Comma,
     Dot,
+    Arrow,
     
     // Assignment
     Assign,
@@ -166,7 +168,6 @@ impl Lexer {
             ':' => self.add_token(TokenType::Colon),
             ',' => self.add_token(TokenType::Comma),
             '.' => self.add_token(TokenType::Dot),
-            '-' => self.add_token(TokenType::Minus),
             '+' => self.add_token(TokenType::Plus),
             '*' => self.add_token(TokenType::Star),
             '!' => {
@@ -201,6 +202,16 @@ impl Lexer {
                 };
                 self.add_token(token_type);
             }
+            '-' => {
+                if self.match_char('>') {
+                    self.add_token(TokenType::Arrow);
+                } else if self.peek().is_ascii_digit() {
+                    // This is a negative number literal, parse as number with negative sign
+                    self.number_with_sign(true)
+                } else {
+                    self.add_token(TokenType::Minus)
+                }
+            },
             '/' => {
                 if self.match_char('/') {
                     // A comment goes until the end of the line
@@ -277,6 +288,15 @@ impl Lexer {
     }
     
     fn number(&mut self) {
+        self.number_with_sign(false)
+    }
+    
+    fn number_with_sign(&mut self, is_negative: bool) {
+        // If this is a negative number, we need to advance past the minus sign first
+        if is_negative {
+            self.advance(); // consume the minus sign
+        }
+        
         while self.peek().is_ascii_digit() {
             self.advance();
         }
@@ -314,20 +334,53 @@ impl Lexer {
         
         let text = &self.source[self.start..self.current];
         
-        if text.contains('.') || text.contains('e') || text.contains('E') {
-            match text.parse::<f64>() {
+        // Check for i32 suffix
+        if self.current < self.source.len() && self.source[self.current..].starts_with("i32") {
+            // Parse as i32 literal
+            let parsed_text = if is_negative {
+                // For negative numbers, the text includes the minus sign, so we can parse directly
+                text.to_string()
+            } else {
+                text.to_string()
+            };
+            match parsed_text.parse::<i32>() {
+                Ok(value) => {
+                    self.advance(); // 'i'
+                    self.advance(); // '3'
+                    self.advance(); // '2'
+                    self.add_token(TokenType::I32Literal(value));
+                }
+                Err(e) => {
+                    eprintln!("Failed to parse i32 literal '{}': {}", parsed_text, e);
+                    panic!("Invalid i32 literal: {}", parsed_text);
+                }
+            }
+        } else if text.contains('.') || text.contains('e') || text.contains('E') {
+            let parsed_text = if is_negative {
+                // For negative numbers, the text includes the minus sign, so we can parse directly
+                text.to_string()
+            } else {
+                text.to_string()
+            };
+            match parsed_text.parse::<f64>() {
                 Ok(value) => self.add_token(TokenType::Float(value)),
                 Err(e) => {
-                    eprintln!("Failed to parse float '{}': {}", text, e);
-                    panic!("Invalid float literal: {}", text);
+                    eprintln!("Failed to parse float '{}': {}", parsed_text, e);
+                    panic!("Invalid float literal: {}", parsed_text);
                 }
             }
         } else {
-            match text.parse::<i64>() {
+            let parsed_text = if is_negative {
+                // For negative numbers, the text includes the minus sign, so we can parse directly
+                text.to_string()
+            } else {
+                text.to_string()
+            };
+            match parsed_text.parse::<i64>() {
                 Ok(value) => self.add_token(TokenType::Integer(value)),
                 Err(e) => {
-                    eprintln!("Failed to parse integer '{}': {}", text, e);
-                    panic!("Invalid integer literal: {}", text);
+                    eprintln!("Failed to parse integer '{}': {}", parsed_text, e);
+                    panic!("Invalid integer literal: {}", parsed_text);
                 }
             }
         }

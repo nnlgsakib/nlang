@@ -84,6 +84,12 @@ impl<'a> Parser<'a> {
         
         self.consume(&TokenType::Identifier(name.clone()), "Expected variable name")?;
         
+        // Check for type annotation
+        let mut var_type = None;
+        if self.match_token(&TokenType::Colon) {
+            var_type = Some(self.parse_type()?);
+        }
+        
         let mut initializer = None;
         if self.match_token(&TokenType::Assign) {
             initializer = Some(self.expression()?);
@@ -93,7 +99,8 @@ impl<'a> Parser<'a> {
         
         Ok(Statement::LetDeclaration { 
             name, 
-            initializer, 
+            initializer,
+            var_type,
             is_exported: false 
         })
     }
@@ -186,7 +193,7 @@ impl<'a> Parser<'a> {
         self.consume(&TokenType::RightParen, "Expected ')' after parameters")?;
         
         // For now, we'll assume return type is void unless specified
-        let return_type = if self.match_token(&TokenType::Colon) {
+        let return_type = if self.match_token(&TokenType::Arrow) {
             // For now, just consume the type - we'll implement proper type parsing later
             Some(self.parse_type()?)
         } else {
@@ -214,6 +221,8 @@ impl<'a> Parser<'a> {
     fn parse_type(&mut self) -> Result<Type, ParseError> {
         if self.match_identifier("int") {
             Ok(Type::Integer)
+        } else if self.match_identifier("i32") {
+            Ok(Type::I32)
         } else if self.match_identifier("float") {
             Ok(Type::Float)
         } else if self.match_identifier("bool") {
@@ -640,6 +649,13 @@ impl<'a> Parser<'a> {
             let token = self.previous();
             if let TokenType::Integer(value) = token.token_type.clone() {
                 return Ok(Expr::Literal(Literal::Integer(value)));
+            }
+        }
+        
+        if self.match_token(&TokenType::I32Literal(0)) {
+            let token = self.previous();
+            if let TokenType::I32Literal(value) = token.token_type.clone() {
+                return Ok(Expr::Literal(Literal::I32(value)));
             }
         }
         

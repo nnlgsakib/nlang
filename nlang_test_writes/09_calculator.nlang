@@ -2,22 +2,22 @@
 // A comprehensive example demonstrating multiple nlang features
 
 // Function to add two numbers
-def add(a: int, b: int): int {
+def add(a: int, b: int) -> int {
     return a + b;
 }
 
 // Function to subtract two numbers
-def subtract(a: int, b: int): int {
+def subtract(a: int, b: int) -> int {
     return a - b;
 }
 
 // Function to multiply two numbers
-def multiply(a: int, b: int): int {
+def multiply(a: int, b: int) -> int {
     return a * b;
 }
 
 // Function to divide two numbers
-def divide(a: int, b: int): float {
+def divide(a: int, b: int) -> float {
     if (b == 0) {
         println("Error: Division by zero!");
         return 0.0;
@@ -26,7 +26,7 @@ def divide(a: int, b: int): float {
 }
 
 // Function to calculate power
-def power(base: int, exponent: int): int {
+def power(base: int, exponent: int) -> int {
     if (exponent == 0) {
         return 1;
     }
@@ -41,7 +41,7 @@ def power(base: int, exponent: int): int {
 }
 
 // Function to calculate square root (using approximation)
-def sqrt_approx(number: int): float {
+def sqrt_approx(number: int) -> float {
     if (number < 0) {
         println("Error: Cannot calculate square root of negative number!");
         return 0.0;
@@ -71,7 +71,7 @@ def sqrt_approx(number: int): float {
 }
 
 // Function to check if number is prime
-def is_prime(n: int): bool {
+def is_prime(n: int) -> bool {
     if (n <= 1) {
         return false;
     }
@@ -96,7 +96,7 @@ def is_prime(n: int): bool {
 }
 
 // Function to calculate GCD (Greatest Common Divisor)
-def gcd(a: int, b: int): int {
+def gcd(a: int, b: int) -> int {
     while (b != 0) {
         store temp = b;
         b = a % b;
@@ -106,20 +106,20 @@ def gcd(a: int, b: int): int {
 }
 
 // Function to display a number with label
-def display_result(label: string, value: int): void {
+def display_result(label: string, value: int) -> void {
     print(label);
     print(": ");
     println(str(value));
 }
 
 // Function to display a float number with label
-def display_result_float(label: string, value: float): void {
+def display_result_float(label: string, value: float) -> void {
     print(label);
     print(": ");
     println(str(value));
 }
 
-def main(): void {
+def main() -> void {
     println("=== Advanced Calculator ===");
     println("");
     
@@ -189,7 +189,7 @@ def main(): void {
     println(str(complex_result));
     
     store area_circle = multiply(multiply(3, 14), multiply(5, 5));
-    print("Approximate area of circle (r=5): ");
+    print("Approximate area of circle (r=5) -> ");
     println(str(area_circle));
     
     println("");

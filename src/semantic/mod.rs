@@ -218,24 +218,37 @@ impl SemanticAnalyzer {
                 let analyzed_expr = self.analyze_expr(expr)?;
                 Ok(Statement::Expression(analyzed_expr))
             },
-            Statement::LetDeclaration { name, initializer, is_exported } => {
+            Statement::LetDeclaration { name, initializer, var_type, is_exported } => {
                 let analyzed_initializer = match initializer {
                     Some(expr) => Some(self.analyze_expr(expr)?),
                     None => None,
                 };
                 
-                // Infer type from initializer or use default
-                let var_type = if let Some(ref init) = analyzed_initializer {
+                // Use declared type if provided, otherwise infer from initializer or use default
+                let final_var_type = if let Some(declared_type) = var_type {
+                    // Validate that initializer type matches declared type if present
+                    if let Some(ref init) = analyzed_initializer {
+                        let init_type = self.infer_type(init)?;
+                        if init_type != declared_type {
+                            return Err(SemanticError {
+                                message: format!("Type mismatch: variable '{}' declared as {:?} but initializer is of type {:?}", name, declared_type, init_type),
+                            });
+                        }
+                    }
+                    declared_type
+                } else if let Some(ref init) = analyzed_initializer {
+                    // Infer type from initializer
                     self.infer_type(init)?
                 } else {
                     Type::Integer // Default type for uninitialized variables
                 };
                 
-                self.define_symbol(name.clone(), Symbol::Variable { var_type })?;
+                self.define_symbol(name.clone(), Symbol::Variable { var_type: final_var_type.clone() })?;
                 
                 Ok(Statement::LetDeclaration {
                     name,
                     initializer: analyzed_initializer,
+                    var_type: Some(final_var_type),
                     is_exported,
                 })
             },
@@ -752,6 +765,7 @@ impl SemanticAnalyzer {
             Expr::Literal(literal) => {
                 match literal {
                     Literal::Integer(_) => Ok(Type::Integer),
+                    Literal::I32(_) => Ok(Type::I32),
                     Literal::Float(_) => Ok(Type::Float),
                     Literal::Boolean(_) => Ok(Type::Boolean),
                     Literal::String(_) => Ok(Type::String),
@@ -779,16 +793,22 @@ impl SemanticAnalyzer {
                         if left_type == Type::String && right_type == Type::String {
                             Ok(Type::String)
                         } else if left_type == Type::Float || right_type == Type::Float {
-                            if (left_type == Type::Integer || left_type == Type::Float) &&
-                               (right_type == Type::Integer || right_type == Type::Float) {
+                            if (left_type == Type::Integer || left_type == Type::I32 || left_type == Type::Float) &&
+                               (right_type == Type::Integer || right_type == Type::I32 || right_type == Type::Float) {
                                 Ok(Type::Float)
                             } else {
                                 Err(SemanticError {
                                     message: format!("Cannot perform arithmetic on {:?} and {:?}", left_type, right_type),
                                 })
                             }
-                        } else if left_type == Type::Integer && right_type == Type::Integer {
-                            Ok(Type::Integer)
+                        } else if (left_type == Type::Integer || left_type == Type::I32) && 
+                                  (right_type == Type::Integer || right_type == Type::I32) {
+                            // For integer types, preserve the more specific type if both are the same
+                            if left_type == Type::I32 && right_type == Type::I32 {
+                                Ok(Type::I32)
+                            } else {
+                                Ok(Type::Integer)
+                            }
                         } else {
                             Err(SemanticError {
                                 message: format!("Cannot perform arithmetic on {:?} and {:?}", left_type, right_type),
@@ -798,8 +818,8 @@ impl SemanticAnalyzer {
                     BinaryOperator::Minus | BinaryOperator::Star => {
                         // Arithmetic operations: promote to float if either operand is float
                         if left_type == Type::Float || right_type == Type::Float {
-                            if left_type == Type::Integer || left_type == Type::Float {
-                                if right_type == Type::Integer || right_type == Type::Float {
+                            if left_type == Type::Integer || left_type == Type::I32 || left_type == Type::Float {
+                                if right_type == Type::Integer || right_type == Type::I32 || right_type == Type::Float {
                                     Ok(Type::Float)
                                 } else {
                                     Err(SemanticError {
@@ -811,8 +831,14 @@ impl SemanticAnalyzer {
                                     message: format!("Cannot perform arithmetic on {:?} and {:?}", left_type, right_type),
                                 })
                             }
-                        } else if left_type == Type::Integer && right_type == Type::Integer {
-                            Ok(Type::Integer)
+                        } else if (left_type == Type::Integer || left_type == Type::I32) && 
+                                  (right_type == Type::Integer || right_type == Type::I32) {
+                            // For integer types, preserve the more specific type if both are the same
+                            if left_type == Type::I32 && right_type == Type::I32 {
+                                Ok(Type::I32)
+                            } else {
+                                Ok(Type::Integer)
+                            }
                         } else {
                             Err(SemanticError {
                                 message: format!("Cannot perform arithmetic on {:?} and {:?}", left_type, right_type),
@@ -821,8 +847,8 @@ impl SemanticAnalyzer {
                     },
                     BinaryOperator::Slash => {
                         // Division always returns float, even for integer operands
-                        if (left_type == Type::Integer || left_type == Type::Float) &&
-                           (right_type == Type::Integer || right_type == Type::Float) {
+                        if (left_type == Type::Integer || left_type == Type::I32 || left_type == Type::Float) &&
+                           (right_type == Type::Integer || right_type == Type::I32 || right_type == Type::Float) {
                             Ok(Type::Float)
                         } else {
                             Err(SemanticError {
@@ -832,8 +858,14 @@ impl SemanticAnalyzer {
                     },
                     BinaryOperator::Percent => {
                         // Modulo only works with integers
-                        if left_type == Type::Integer && right_type == Type::Integer {
-                            Ok(Type::Integer)
+                        if (left_type == Type::Integer || left_type == Type::I32) && 
+                           (right_type == Type::Integer || right_type == Type::I32) {
+                            // For integer types, preserve the more specific type if both are the same
+                            if left_type == Type::I32 && right_type == Type::I32 {
+                                Ok(Type::I32)
+                            } else {
+                                Ok(Type::Integer)
+                            }
                         } else {
                             Err(SemanticError {
                                 message: "Modulo operator requires integer operands".to_string(),
@@ -844,7 +876,11 @@ impl SemanticAnalyzer {
                         // Equality comparison: operands must be compatible types
                         if left_type == right_type || 
                            (left_type == Type::Integer && right_type == Type::Float) ||
-                           (left_type == Type::Float && right_type == Type::Integer) {
+                           (left_type == Type::Float && right_type == Type::Integer) ||
+                           (left_type == Type::Integer && right_type == Type::I32) ||
+                           (left_type == Type::I32 && right_type == Type::Integer) ||
+                           (left_type == Type::I32 && right_type == Type::Float) ||
+                           (left_type == Type::Float && right_type == Type::I32) {
                             Ok(Type::Boolean)
                         } else {
                             Err(SemanticError {
@@ -855,8 +891,8 @@ impl SemanticAnalyzer {
                     BinaryOperator::Less | BinaryOperator::LessEqual | 
                     BinaryOperator::Greater | BinaryOperator::GreaterEqual => {
                         // Relational comparison: only numeric types
-                        if (left_type == Type::Integer || left_type == Type::Float) &&
-                           (right_type == Type::Integer || right_type == Type::Float) {
+                        if (left_type == Type::Integer || left_type == Type::I32 || left_type == Type::Float) &&
+                           (right_type == Type::Integer || right_type == Type::I32 || right_type == Type::Float) {
                             Ok(Type::Boolean)
                         } else {
                             Err(SemanticError {
@@ -889,7 +925,7 @@ impl SemanticAnalyzer {
                         }
                     },
                     crate::ast::UnaryOperator::Negate => {
-                        if operand_type == Type::Integer || operand_type == Type::Float {
+                        if operand_type == Type::Integer || operand_type == Type::I32 || operand_type == Type::Float {
                             Ok(operand_type)
                         } else {
                             Err(SemanticError {
@@ -1102,7 +1138,7 @@ impl SemanticAnalyzer {
                         });
                     }
                 },
-                Statement::LetDeclaration { name, initializer, is_exported } => {
+                Statement::LetDeclaration { name, initializer, var_type: _, is_exported } => {
                     if *is_exported {
                         // Infer type from initializer if available
                         let var_type = if let Some(init_expr) = initializer {

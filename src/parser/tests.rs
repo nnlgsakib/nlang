@@ -11,7 +11,7 @@ mod tests {
         let program = parse(&tokens).unwrap();
         
         match &program.statements[0] {
-            Statement::LetDeclaration { name, initializer: Some(init), is_exported: _ } => {
+            Statement::LetDeclaration { name, initializer: Some(init), var_type: _, is_exported: _ } => {
                 assert_eq!(name, "x");
                 match init {
                     Expr::Literal(Literal::Integer(42)) => (),
@@ -75,6 +75,35 @@ mod tests {
                 }
             },
             _ => panic!("Expected if statement"),
+        }
+    }
+
+    #[test]
+    fn test_i32_literal() {
+        let source = "store x = 42i32; store y = -123i32;";
+        let tokens = tokenize(source).unwrap();
+        let program = parse(&tokens).unwrap();
+        
+        match &program.statements[0] {
+            Statement::LetDeclaration { name, initializer: Some(init), var_type: _, is_exported: _ } => {
+                assert_eq!(name, "x");
+                match init {
+                    Expr::Literal(Literal::I32(42)) => (),
+                    _ => panic!("Expected i32 literal 42"),
+                }
+            },
+            _ => panic!("Expected let declaration"),
+        }
+        
+        match &program.statements[1] {
+            Statement::LetDeclaration { name, initializer: Some(init), var_type: _, is_exported: _ } => {
+                assert_eq!(name, "y");
+                match init {
+                    Expr::Literal(Literal::I32(-123)) => (),
+                    _ => panic!("Expected i32 literal -123"),
+                }
+            },
+            _ => panic!("Expected let declaration"),
         }
     }
 }

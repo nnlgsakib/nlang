@@ -55,4 +55,104 @@ mod tests {
         
         assert!(analyzed_program.is_ok());
     }
+
+    #[test]
+    fn test_i32_literal_type_inference() {
+        let source = "def main() { store x = 42i32; }";
+        let tokens = tokenize(source).unwrap();
+        let program = parse(&tokens).unwrap();
+        let analyzed_program = analyze(program);
+        
+        assert!(analyzed_program.is_ok());
+    }
+
+    #[test]
+    fn test_i32_arithmetic_operations() {
+        let source = "def main() { store x = 10i32 + 5i32; store y = 20i32 - 3i32; store z = 4i32 * 6i32; }";
+        let tokens = tokenize(source).unwrap();
+        let program = parse(&tokens).unwrap();
+        let analyzed_program = analyze(program);
+        
+        assert!(analyzed_program.is_ok());
+    }
+
+    #[test]
+    fn test_i32_mixed_arithmetic_with_integer() {
+        let source = "def main() { store x = 10i32 + 5; store y = 20 - 3i32; }";
+        let tokens = tokenize(source).unwrap();
+        let program = parse(&tokens).unwrap();
+        let analyzed_program = analyze(program);
+        
+        assert!(analyzed_program.is_ok());
+    }
+
+    #[test]
+    fn test_i32_comparison_operations() {
+        let source = "def main() { store x = 10i32 == 10i32; store y = 5i32 != 3i32; store z = 8i32 < 12i32; }";
+        let tokens = tokenize(source).unwrap();
+        let program = parse(&tokens).unwrap();
+        let analyzed_program = analyze(program);
+        
+        assert!(analyzed_program.is_ok());
+    }
+
+    #[test]
+    fn test_i32_mixed_comparison_with_integer() {
+        let source = "def main() { store x = 10i32 == 10; store y = 5 != 3i32; store z = 8i32 < 12; }";
+        let tokens = tokenize(source).unwrap();
+        let program = parse(&tokens).unwrap();
+        let analyzed_program = analyze(program);
+        
+        assert!(analyzed_program.is_ok());
+    }
+
+    #[test]
+    fn test_i32_unary_negation() {
+        let source = "def main() { store x = -10i32; }";
+        let tokens = tokenize(source).unwrap();
+        let program = parse(&tokens).unwrap();
+        let analyzed_program = analyze(program);
+        
+        assert!(analyzed_program.is_ok());
+    }
+
+    #[test]
+    fn test_i32_modulo_operation() {
+        let source = "def main() { store x = 15i32 % 4i32; }";
+        let tokens = tokenize(source).unwrap();
+        let program = parse(&tokens).unwrap();
+        let analyzed_program = analyze(program);
+        
+        assert!(analyzed_program.is_ok());
+    }
+
+    #[test]
+    fn test_i32_division_promotes_to_float() {
+        let source = "def main() { store x = 10i32 / 3i32; }";
+        let tokens = tokenize(source).unwrap();
+        let program = parse(&tokens).unwrap();
+        let analyzed_program = analyze(program);
+        
+        assert!(analyzed_program.is_ok());
+    }
+
+    #[test]
+    fn test_backward_compatibility_regular_integers() {
+        let source = "def main() { store x = 42; store y = x + 10; }";
+        let tokens = tokenize(source).unwrap();
+        let program = parse(&tokens).unwrap();
+        let analyzed_program = analyze(program);
+        
+        assert!(analyzed_program.is_ok());
+    }
+
+    #[test]
+    fn test_i32_function_parameter_and_return() {
+        let source = "def process_i32(x: i32) -> i32 { return x + 1i32; } def main() { store result = process_i32(5i32); }";
+        let tokens = tokenize(source).unwrap();
+        let program = parse(&tokens).unwrap();
+        let analyzed_program = analyze(program);
+        
+        assert!(analyzed_program.is_ok());
+    }
 }

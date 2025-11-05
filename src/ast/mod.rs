@@ -11,6 +11,7 @@ pub enum Statement {
     LetDeclaration {
         name: String,
         initializer: Option<Expr>,
+        var_type: Option<Type>,
         is_exported: bool,
     },
     FunctionDeclaration {
@@ -59,6 +60,7 @@ pub struct Parameter {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Integer,
+    I32,
     Float,
     Boolean,
     String,
@@ -111,6 +113,7 @@ pub enum Expr {
 #[derive(Debug, Clone)]
 pub enum Literal {
     Integer(i64),
+    I32(i32),
     Float(f64),
     Boolean(bool),
     String(String),
@@ -144,6 +147,7 @@ impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Type::Integer => write!(f, "int"),
+            Type::I32 => write!(f, "i32"),
             Type::Float => write!(f, "float"),
             Type::Boolean => write!(f, "bool"),
             Type::String => write!(f, "string"),

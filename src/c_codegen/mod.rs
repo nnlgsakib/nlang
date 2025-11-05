@@ -38,6 +38,27 @@ impl CCodeGenerator {
         generator.line("#include <string.h>");
         generator.line("#include <stdlib.h>");
         generator.line("#include <math.h>");
+        generator.line("#include <stdint.h>"); // For int32_t
+        generator.empty();
+        
+        // Add built-in string conversion functions
+        generator.line("// Built-in string conversion functions");
+        generator.line("char* int_to_str(int value) {");
+        generator.push();
+        generator.line("static char buffer[20];");
+        generator.line("snprintf(buffer, sizeof(buffer), \"%d\", value);");
+        generator.line("return buffer;");
+        generator.pop();
+        generator.line("}");
+        generator.empty();
+        
+        generator.line("char* float_to_str(double value) {");
+        generator.push();
+        generator.line("static char buffer[50];");
+        generator.line("snprintf(buffer, sizeof(buffer), \"%f\", value);");
+        generator.line("return buffer;");
+        generator.pop();
+        generator.line("}");
         generator.empty();
         generator
     }
@@ -236,11 +257,16 @@ impl CCodeGenerator {
                 let code = self.emit_expr(e)?;
                 self.line(&format!("{code};"));
             }
-            Statement::LetDeclaration { name, initializer, .. } => {
-                let ty = initializer
-                    .as_ref()
-                    .map(|e| self.infer_type(e))
-                    .unwrap_or("int".to_string());
+            Statement::LetDeclaration { name, initializer, var_type, .. } => {
+                // Use declared type if available, otherwise infer from initializer or default to int
+                let ty = if let Some(declared_type) = var_type {
+                    self.type_to_c(declared_type)
+                } else if let Some(init) = initializer {
+                    self.infer_type(init)
+                } else {
+                    "int".to_string()
+                };
+                
                 self.vars.insert(name.clone(), ty.clone());
                 if let Some(init) = initializer {
                     let init_code = self.emit_expr(init)?;
@@ -354,6 +380,7 @@ impl CCodeGenerator {
     fn emit_lit(&self, l: &Literal) -> Result<String, CCodeGenError> {
         Ok(match l {
             Literal::Integer(i) => i.to_string(),
+            Literal::I32(i) => i.to_string(),
             Literal::Float(f) => f.to_string(),
             Literal::String(s) => self.str_consts.get(s).cloned()
                 .ok_or_else(|| CCodeGenError::Unsupported("string not collected".into()))?,
@@ -368,6 +395,7 @@ impl CCodeGenerator {
     fn type_to_c(&self, t: &Type) -> String {
         match t {
             Type::Integer => "int".into(),
+            Type::I32 => "int32_t".into(),
             Type::Float => "double".into(),
             Type::String => "const char*".into(),
             Type::Boolean => "int".into(),
@@ -401,6 +429,7 @@ impl CCodeGenerator {
             Expr::Literal(Literal::Float(_)) => "double".into(),
             Expr::Literal(Literal::Boolean(_)) => "int".into(),
             Expr::Literal(Literal::Integer(_)) => "int".into(),
+            Expr::Literal(Literal::I32(_)) => "int32_t".into(),
             _ => "int".into(),
         }
     }

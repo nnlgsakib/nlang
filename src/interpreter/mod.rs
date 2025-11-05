@@ -223,7 +223,7 @@ impl Interpreter {
         
         // Load exported constants from the module with qualified names
         for statement in &module_program.statements {
-            if let Statement::LetDeclaration { name, initializer, is_exported } = statement {
+            if let Statement::LetDeclaration { name, initializer, var_type: _, is_exported } = statement {
                 if *is_exported {
                     if let Some(init_expr) = initializer {
                         let mut temp_env = self.global_env.clone();
@@ -262,7 +262,7 @@ impl Interpreter {
             
             // Look for exported constants
             for statement in &module_program.statements {
-                if let Statement::LetDeclaration { name, initializer, is_exported } = statement {
+                if let Statement::LetDeclaration { name, initializer, var_type: _, is_exported } = statement {
                     if name == item_name && *is_exported {
                         if let Some(init_expr) = initializer {
                             let mut temp_env = self.global_env.clone();
@@ -413,6 +413,7 @@ impl Interpreter {
             Expr::Literal(literal) => {
                 match literal {
                     Literal::Integer(i) => Ok(Value::Integer(*i)),
+                    Literal::I32(i) => Ok(Value::Integer(*i as i64)), // Convert i32 to i64 for interpreter
                     Literal::Float(f) => Ok(Value::Float(*f)),
                     Literal::Boolean(b) => Ok(Value::Boolean(*b)),
                     Literal::String(s) => Ok(Value::String(s.clone())),
@@ -847,6 +848,7 @@ mod tests {
                 Statement::LetDeclaration {
                     name: "x".to_string(),
                     initializer: Some(Expr::Literal(Literal::Integer(5))),
+                    var_type: None,
                     is_exported: false,
                 },
                 Statement::Return {
