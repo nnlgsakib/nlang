@@ -229,7 +229,7 @@ impl SemanticAnalyzer {
                     // Validate that initializer type matches declared type if present
                     if let Some(ref init) = analyzed_initializer {
                         let init_type = self.infer_type(init)?;
-                        if init_type != declared_type {
+                        if !self.are_types_compatible(&init_type, &declared_type) {
                             return Err(SemanticError {
                                 message: format!("Type mismatch: variable '{}' declared as {:?} but initializer is of type {:?}", name, declared_type, init_type),
                             });
@@ -1185,5 +1185,32 @@ impl SemanticAnalyzer {
                 message: "No main function found. Programs must have a main function as entry point".to_string(),
             }),
         }
+    }
+    
+    /// Check if two types are compatible for assignment/initialization
+    fn are_types_compatible(&self, type1: &Type, type2: &Type) -> bool {
+        // Same types are always compatible
+        if type1 == type2 {
+            return true;
+        }
+        
+        // Integer and I32 are compatible (Integer can be assigned to I32)
+        if (*type1 == Type::Integer && *type2 == Type::I32) ||
+           (*type1 == Type::I32 && *type2 == Type::Integer) {
+            return true;
+        }
+        
+        // Integer can be assigned to Float (implicit conversion)
+        if (*type1 == Type::Integer && *type2 == Type::Float) ||
+           (*type1 == Type::I32 && *type2 == Type::Float) {
+            return true;
+        }
+        
+        // I32 can be assigned to Integer (widening conversion)
+        if *type1 == Type::I32 && *type2 == Type::Integer {
+            return true;
+        }
+        
+        false
     }
 }

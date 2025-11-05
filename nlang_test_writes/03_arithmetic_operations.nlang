@@ -4,7 +4,7 @@
 def main() {
     println("=== Arithmetic Operations ===");
     
-    store a = 15;
+    store a:i32 = 15;
     store b = 4;
     
     // Basic arithmetic
