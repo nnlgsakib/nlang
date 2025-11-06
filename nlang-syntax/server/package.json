@@ -1,0 +1,18 @@
+{
+  "name": "nlang-language-server",
+  "version": "1.0.1",
+  "description": "Language server for NLang programming language",
+  "main": "out/server.js",
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -w -p ."
+  },
+  "dependencies": {
+    "vscode-languageserver": "^8.1.0",
+    "vscode-languageserver-textdocument": "^1.0.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  }
+}
