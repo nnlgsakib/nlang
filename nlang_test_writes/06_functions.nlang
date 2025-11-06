@@ -14,7 +14,7 @@ def greet_person(name: string) {
 }
 
 // Function with parameters and return value
-def add_numbers(a: int, b: int) -> int {
+export def add_numbers(a: int, b: int) -> int {
     store result = a + b;
     return result;
 }

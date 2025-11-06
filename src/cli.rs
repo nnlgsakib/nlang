@@ -33,8 +33,8 @@ pub fn compile(input: PathBuf, output: Option<PathBuf>) -> anyhow::Result<()> {
         path
     });
     
-    // Compile to executable
-    engine.compile_to_executable(&source, module_name, &output_path)?;
+    // Compile to executable with file path for proper module resolution
+    engine.compile_to_executable_with_file_path(&source, module_name, &output_path, Some(&input))?;
     
     println!("Compiled successfully to: {}", output_path.display());
     Ok(())
@@ -57,8 +57,8 @@ pub fn generate_c(input: PathBuf, output: Option<PathBuf>) -> anyhow::Result<()>
         .and_then(|s| s.to_str())
         .unwrap_or("main");
     
-    // Generate C code
-    let c_code = engine.compile_to_c(&source, module_name)?;
+    // Generate C code with file path for proper module resolution
+    let c_code = engine.compile_to_c_with_file_path(&source, module_name, Some(&input))?;
     
     // Determine output path
     let output_path = output.unwrap_or_else(|| {

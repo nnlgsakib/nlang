@@ -253,7 +253,45 @@ impl Lexer {
                 }
             }
             '"' => self.string()?,
-            '0'..='9' => self.number(),
+            '0'..='9' => {
+                // Check if this might be an identifier starting with a digit (for module names like 06_functions)
+                // We need to be careful not to interfere with numeric literals that have type suffixes
+                
+                let mut temp_pos = self.current;
+                
+                // Skip the initial digits
+                while temp_pos < self.source.len() && self.source.chars().nth(temp_pos).unwrap().is_ascii_digit() {
+                    temp_pos += 1;
+                }
+                
+                // Check if the next character is alphabetic or underscore
+                if temp_pos < self.source.len() {
+                    let next_char = self.source.chars().nth(temp_pos).unwrap();
+                    
+                    // Check if this could be a type suffix
+                    let remaining = &self.source[temp_pos..];
+                    let is_type_suffix = remaining.starts_with("i8") ||
+                                       remaining.starts_with("i16") ||
+                                       remaining.starts_with("i32") ||
+                                       remaining.starts_with("i64") ||
+                                       remaining.starts_with("isize") ||
+                                       remaining.starts_with("u8") ||
+                                       remaining.starts_with("u16") ||
+                                       remaining.starts_with("u32") ||
+                                       remaining.starts_with("u64") ||
+                                       remaining.starts_with("usize");
+                    
+                    if (next_char.is_alphabetic() || next_char == '_') && !is_type_suffix {
+                        // This is an identifier starting with digits (like 06_functions)
+                        self.identifier();
+                    } else {
+                        // This is a regular number (possibly with type suffix)
+                        self.number()
+                    }
+                } else {
+                    self.number()
+                }
+            },
             'a'..='z' | 'A'..='Z' | '_' => self.identifier(),
             _ => {
                 return Err(LexerError {

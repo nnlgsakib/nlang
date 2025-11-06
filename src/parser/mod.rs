@@ -279,6 +279,8 @@ impl<'a> Parser<'a> {
         
         let module = if let TokenType::Identifier(name) = &self.peek().token_type {
             name.clone()
+        } else if let TokenType::String(name) = &self.peek().token_type {
+            name.clone()
         } else {
             return Err(ParseError {
                 message: "Expected module name".to_string(),
@@ -286,7 +288,21 @@ impl<'a> Parser<'a> {
             });
         };
         
-        self.consume(&TokenType::Identifier(module.clone()), "Expected module name")?;
+        // Consume either identifier or string token
+        match &self.peek().token_type {
+            TokenType::Identifier(_) => {
+                self.consume(&TokenType::Identifier(module.clone()), "Expected module name")?;
+            }
+            TokenType::String(_) => {
+                self.consume(&TokenType::String(module.clone()), "Expected module name")?;
+            }
+            _ => {
+                return Err(ParseError {
+                    message: "Expected module name".to_string(),
+                    line: self.peek().line,
+                });
+            }
+        }
         
         if self.match_token(&TokenType::As) {
             let alias = if let TokenType::Identifier(name) = &self.peek().token_type {
@@ -318,6 +334,8 @@ impl<'a> Parser<'a> {
         
         let module = if let TokenType::Identifier(name) = &self.peek().token_type {
             name.clone()
+        } else if let TokenType::String(name) = &self.peek().token_type {
+            name.clone()
         } else {
             return Err(ParseError {
                 message: "Expected module name".to_string(),
@@ -325,7 +343,21 @@ impl<'a> Parser<'a> {
             });
         };
         
-        self.consume(&TokenType::Identifier(module.clone()), "Expected module name")?;
+        // Consume either identifier or string token
+        match &self.peek().token_type {
+            TokenType::Identifier(_) => {
+                self.consume(&TokenType::Identifier(module.clone()), "Expected module name")?;
+            }
+            TokenType::String(_) => {
+                self.consume(&TokenType::String(module.clone()), "Expected module name")?;
+            }
+            _ => {
+                return Err(ParseError {
+                    message: "Expected module name".to_string(),
+                    line: self.peek().line,
+                });
+            }
+        }
         self.consume(&TokenType::Import, "Expected 'import' keyword")?;
         
         let items = self.parse_import_list()?;

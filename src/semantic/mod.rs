@@ -48,6 +48,8 @@ struct SemanticAnalyzer {
 struct ModuleInfo {
     // Exported symbols from the module
     exported_symbols: HashMap<String, Symbol>,
+    // Original parsed program (for function definitions)
+    original_program: Program,
 }
 
 #[derive(Debug, Clone)]
@@ -226,11 +228,34 @@ impl SemanticAnalyzer {
             }
         }
 
-        // Third pass: analyze all statements
+        // Third pass: analyze all statements and collect imported function definitions
         let mut analyzed_statements = Vec::new();
+        let mut imported_function_definitions = Vec::new();
+        
         for stmt in program.statements {
-            analyzed_statements.push(self.analyze_statement(stmt)?);
+            let analyzed_stmt = self.analyze_statement(stmt)?;
+            
+            // Check if this is an import statement and collect imported function definitions
+            if let Statement::Import { module, alias: _ } = &analyzed_stmt {
+                let module_path = self.resolve_module_path(module);
+                let module_info = self.load_module(&module_path)?;
+                
+                // Collect function definitions from the imported module
+                for (symbol_name, symbol) in &module_info.exported_symbols {
+                    if let Symbol::Function { return_type: _, parameters: _ } = symbol {
+                        // Get the actual function definition from the module
+                        if let Some(func_stmt) = self.find_function_definition_in_module(&module_path, symbol_name) {
+                            imported_function_definitions.push(func_stmt);
+                        }
+                    }
+                }
+            }
+            
+            analyzed_statements.push(analyzed_stmt);
         }
+        
+        // Add imported function definitions to the analyzed program
+        analyzed_statements.extend(imported_function_definitions);
         
         // Validate that a main function exists and has the correct signature (only for main program)
         if is_main_program {
@@ -1202,11 +1227,15 @@ impl SemanticAnalyzer {
     fn resolve_module_path(&self, module_name: &str) -> PathBuf {
         // Convert module name to file path
         // e.g., "math.utils" -> "math/utils.nlang"
+        // e.g., "06_functions" -> "06_functions.nlang" (in current directory)
         let path_parts: Vec<&str> = module_name.split('.').collect();
         let mut path = self.current_dir.clone();
         
-        for part in &path_parts[..path_parts.len() - 1] {
-            path.push(part);
+        if path_parts.len() > 1 {
+            // For dotted module names, create subdirectories
+            for part in &path_parts[..path_parts.len() - 1] {
+                path.push(part);
+            }
         }
         
         path.push(format!("{}.nlang", path_parts.last().unwrap()));
@@ -1239,8 +1268,8 @@ impl SemanticAnalyzer {
             })?;
         
         // Analyze the module to extract exported symbols
-        let mut module_analyzer = SemanticAnalyzer::new();
-        let analyzed_program = module_analyzer.analyze_program(Program { statements: program }, false)?; // false indicates this is not the main program
+        let mut module_analyzer = SemanticAnalyzer::new_with_file_path(Some(module_path));
+        let analyzed_program = module_analyzer.analyze_program(Program { statements: program.clone() }, false)?; // false indicates this is not the main program
         
         // Extract exported symbols
         let mut exported_symbols = HashMap::new();
@@ -1248,6 +1277,7 @@ impl SemanticAnalyzer {
         
         let module_info = ModuleInfo {
             exported_symbols,
+            original_program: Program { statements: program },
         };
         
         // Cache the module
@@ -1471,5 +1501,21 @@ impl SemanticAnalyzer {
         }
         
         Ok(())
+    }
+    
+    /// Find a function definition by name in a loaded module
+    fn find_function_definition_in_module(&self, module_path: &Path, function_name: &str) -> Option<Statement> {
+        // Look for the module in the cache
+        if let Some(module_info) = self.module_cache.get(module_path) {
+            // Search through the module's statements to find the function definition
+            for stmt in &module_info.original_program.statements {
+                if let Statement::FunctionDeclaration { name, .. } = stmt {
+                    if name == function_name {
+                        return Some(stmt.clone());
+                    }
+                }
+            }
+        }
+        None
     }
 }

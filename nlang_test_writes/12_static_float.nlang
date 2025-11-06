@@ -1,4 +1,5 @@
 // Static float tests: f32/f64 types and scientific notation
+import 06_functions;
 
 def main() {
     store a: f32 = 3.14;
@@ -15,4 +16,9 @@ def main() {
     println(s);
     println(d);
     println(f);
+    
+    // Using imported function
+    store sum_result = add_numbers(10, 5);
+    print("10 + 5 = ");
+    println(sum_result);
 }

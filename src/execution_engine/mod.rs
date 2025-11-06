@@ -77,6 +77,18 @@ impl ExecutionEngine {
         self.compile_with_gcc(source, module_name, output_path)
     }
     
+    /// Compile a nlang program to an executable binary with file path for proper module resolution
+    pub fn compile_to_executable_with_file_path(
+        &self,
+        source: &str,
+        module_name: &str,
+        output_path: &Path,
+        file_path: Option<&std::path::Path>,
+    ) -> Result<(), ExecutionError> {
+        // Use GCC compilation (compile to C first)
+        self.compile_with_gcc_with_file_path(source, module_name, output_path, file_path)
+    }
+    
 
     
     /// Compile using GCC (generate C code first)
@@ -86,8 +98,19 @@ impl ExecutionEngine {
         module_name: &str,
         output_path: &Path,
     ) -> Result<(), ExecutionError> {
+        self.compile_with_gcc_with_file_path(source, module_name, output_path, None)
+    }
+    
+    /// Compile using GCC with file path for proper module resolution
+    fn compile_with_gcc_with_file_path(
+        &self,
+        source: &str,
+        module_name: &str,
+        output_path: &Path,
+        file_path: Option<&std::path::Path>,
+    ) -> Result<(), ExecutionError> {
         // Generate C code instead of LLVM IR
-        let c_code = self.compile_to_c(source, module_name)?;
+        let c_code = self.compile_to_c_with_file_path(source, module_name, file_path)?;
         
         // Create temporary C file
         let temp_dir = std::env::temp_dir();
@@ -119,14 +142,23 @@ impl ExecutionEngine {
     
     /// Generate C code representation (fallback for GCC compilation)
     pub fn compile_to_c(&self, source: &str, _module_name: &str) -> Result<String, ExecutionError> {
+        self.compile_to_c_with_file_path(source, _module_name, None)
+    }
+    
+    /// Generate C code representation with file path for proper module resolution
+    pub fn compile_to_c_with_file_path(&self, source: &str, _module_name: &str, file_path: Option<&std::path::Path>) -> Result<String, ExecutionError> {
         // Tokenize
         let tokens = tokenize(source)?;
         
         // Parse
         let program = parse(&tokens)?;
         
-        // Semantic analysis
-        let analyzed_program = analyze(program)?;
+        // Semantic analysis with file path for proper module resolution
+        let analyzed_program = if let Some(path) = file_path {
+            analyze_with_file_path(program, Some(path))?
+        } else {
+            analyze(program)?
+        };
         
         // Generate C code
         let c_generator = CCodeGenerator::new();
