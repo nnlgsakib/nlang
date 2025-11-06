@@ -63,6 +63,12 @@ pub fn compile(input: PathBuf, output: Option<PathBuf>, generate_lex: bool, gene
     Ok(())
 }
 
+pub fn version() -> anyhow::Result<()> {
+    println!("nlang compiler version {}", env!("CARGO_PKG_VERSION"));
+    println!("A new programming language with Python-like syntax compiled to machine code using C");
+    Ok(())
+}
+
 
 
 pub fn generate_c(input: PathBuf, output: Option<PathBuf>, generate_lex: bool, generate_ast: bool) -> anyhow::Result<()> {

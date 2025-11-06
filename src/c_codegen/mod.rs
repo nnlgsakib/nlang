@@ -658,7 +658,44 @@ fn print_fmt(&self, e: &Expr, code: &str) -> Result<(String, String), CCodeGenEr
                 _ => ("%s".into(), code.into()),
             }
         }
-        _ => ("%s".into(), code.into()),
+        Expr::Binary { left: _, right: _, operator: _, .. } => {
+            // For binary expressions, infer the type of the expression
+            let ty = self.infer_type(e);
+            match ty.as_str() {
+                "int" => ("%d".into(), code.into()),
+                "int8_t" => ("%d".into(), code.into()),
+                "int16_t" => ("%d".into(), code.into()),
+                "int32_t" => ("%d".into(), code.into()),
+                "int64_t" => ("%ld".into(), code.into()),
+                "uint8_t" => ("%u".into(), code.into()),
+                "uint16_t" => ("%u".into(), code.into()),
+                "uint32_t" => ("%u".into(), code.into()),
+                "uint64_t" => ("%lu".into(), code.into()),
+                "float" => ("%f".into(), code.into()),
+                "double" => ("%f".into(), code.into()),
+                "char*" => ("%s".into(), code.into()),
+                _ => ("%d".into(), code.into()),
+            }
+        }
+        _ => {
+            // For other expressions, infer the type and use appropriate format
+            let ty = self.infer_type(e);
+            match ty.as_str() {
+                "int" => ("%d".into(), code.into()),
+                "int8_t" => ("%d".into(), code.into()),
+                "int16_t" => ("%d".into(), code.into()),
+                "int32_t" => ("%d".into(), code.into()),
+                "int64_t" => ("%ld".into(), code.into()),
+                "uint8_t" => ("%u".into(), code.into()),
+                "uint16_t" => ("%u".into(), code.into()),
+                "uint32_t" => ("%u".into(), code.into()),
+                "uint64_t" => ("%lu".into(), code.into()),
+                "float" => ("%f".into(), code.into()),
+                "double" => ("%f".into(), code.into()),
+                "char*" => ("%s".into(), code.into()),
+                _ => ("%d".into(), code.into()),
+            }
+        }
     })
 }}
 

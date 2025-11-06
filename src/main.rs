@@ -78,6 +78,10 @@ enum Commands {
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
+    
+    /// Display version information
+    #[command(alias = "v")]
+    Version,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -98,6 +102,9 @@ fn main() -> anyhow::Result<()> {
         }
         Commands::GenAst { input, output } => {
             cli::gen_ast(input, output)?;
+        }
+        Commands::Version => {
+            cli::version()?;
         }
     }
 

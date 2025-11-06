@@ -2,8 +2,10 @@
 // This demonstrates the simplest possible nlang program
 
 def main() {
+    store a:i32 = 123;
+    store b:i8 = 23;
     println("Hello, World!");
     println("Welcome to nlang programming!");
+    println(a+b);
 }
 
-//
