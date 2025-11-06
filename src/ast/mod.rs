@@ -1,11 +1,11 @@
 use std::fmt;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct Program {
     pub statements: Vec<Statement>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub enum Statement {
     Expression(Expr),
     LetDeclaration {
@@ -51,13 +51,13 @@ pub enum Statement {
     },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct Parameter {
     pub name: String,
     pub param_type: Type,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub enum Type {
     Integer,
     I8,
@@ -80,7 +80,7 @@ pub enum Type {
     Void,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub enum Expr {
     Literal(Literal),
     Variable(String),
@@ -129,7 +129,7 @@ pub enum Expr {
     },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub enum Literal {
     Integer(i64),
     I8(i8),
@@ -148,7 +148,7 @@ pub enum Literal {
     Null,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub enum BinaryOperator {
     Plus,
     Minus,
@@ -165,7 +165,7 @@ pub enum BinaryOperator {
     Or,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub enum UnaryOperator {
     Negate,
     Not,
