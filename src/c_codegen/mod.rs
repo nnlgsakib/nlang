@@ -324,12 +324,31 @@ fn emit_stmt(&mut self, stmt: &Statement) -> Result<(), CCodeGenError> {
                 "int".to_string()
             };
            
-            self.vars.insert(name.clone(), ty.clone());
+            // Store the element type for arrays, not the full array type
+            let var_type_to_store = if let Some(Type::Array(element_type, _)) = var_type {
+                self.type_to_c(element_type)
+            } else {
+                ty.clone()
+            };
+            self.vars.insert(name.clone(), var_type_to_store);
             if let Some(init) = initializer {
                 let init_code = self.emit_expr(init)?;
-                self.line(&format!("{ty} {name} = {init_code};"));
+                
+                // Handle array types specially - in C, arrays are declared as "type name[size]"
+                if let Some(Type::Array(element_type, size)) = var_type {
+                    let element_ty = self.type_to_c(element_type);
+                    self.line(&format!("{element_ty} {name}[{size}] = {init_code};"));
+                } else {
+                    self.line(&format!("{ty} {name} = {init_code};"));
+                }
             } else {
-                self.line(&format!("{ty} {name};"));
+                // Handle array types specially - in C, arrays are declared as "type name[size]"
+                if let Some(Type::Array(element_type, size)) = var_type {
+                    let element_ty = self.type_to_c(element_type);
+                    self.line(&format!("{element_ty} {name}[{size}];"));
+                } else {
+                    self.line(&format!("{ty} {name};"));
+                }
             }
         }
         Statement::If { condition, then_branch, else_branch } => {
@@ -429,6 +448,33 @@ fn emit_expr(&mut self, e: &Expr) -> Result<String, CCodeGenError> {
             self.vars.insert(name.clone(), "int".into());
             format!("({name} = {v})")
         }
+        Expr::AssignIndex { sequence, index, value } => {
+            // Handle array assignment: arr[i] = value
+            let seq_code = self.emit_expr(sequence)?;
+            let idx_code = self.emit_expr(index)?;
+            let val_code = self.emit_expr(value)?;
+            format!("({seq_code}[{idx_code}] = {val_code})")
+        }
+        Expr::Index { sequence, index } => {
+            let seq_code = self.emit_expr(sequence)?;
+            let idx_code = self.emit_expr(index)?;
+            format!("({seq_code}[{idx_code}])")
+        }
+        Expr::ArrayLiteral { elements } => {
+            let mut element_codes = Vec::new();
+            for element in elements {
+                element_codes.push(self.emit_expr(element)?);
+            }
+            
+            // For array literals, we need to create a temporary array
+            // This is a simple implementation that creates a static array
+            if element_codes.is_empty() {
+                return Ok("NULL".to_string());
+            }
+            
+            // Use proper C array initialization syntax
+            format!("{{{}}}", element_codes.join(", "))
+        }
         _ => return Err(CCodeGenError::Unsupported(format!("expr {:?}", e))),
     })
 }
@@ -474,7 +520,7 @@ fn type_to_c(&self, t: &Type) -> String {
         Type::String => "const char*".into(),
         Type::Boolean => "int".into(),
         Type::Void => "void".into(),
-        Type::Array(_) | Type::Function { .. } => "void*".into(),
+        Type::Array(inner, size) => format!("{}[{}]", self.type_to_c(inner), size),        Type::Function { .. } => "void*".into(),
     }
 }
 fn binop(&self, op: &BinaryOperator) -> &'static str {
@@ -531,6 +577,33 @@ fn infer_type(&self, e: &Expr) -> String {
                 "int".into()
             }
         },
+        Expr::ArrayLiteral { elements } => {
+            if elements.is_empty() {
+                "void*".into()
+            } else {
+                self.infer_type(&elements[0])
+            }
+        },
+        Expr::Index { sequence, index: _ } => {
+            // For array indexing expressions, infer the type of the sequence
+            // If the sequence is a variable, look up its type in the vars map
+            if let Expr::Variable(var_name) = sequence.as_ref() {
+                let full_type = self.vars.get(var_name).map(|s| s.as_str()).unwrap_or("int");
+                
+                // Extract element type from array types (e.g., "double[3]" -> "double")
+                if let Some(open_bracket) = full_type.find('[') {
+                    full_type[..open_bracket].to_string()
+                } else {
+                    full_type.into()
+                }
+            } else {
+                // For other sequence types, recursively infer the type
+                self.infer_type(sequence)
+            }
+        },
+        Expr::Variable(var_name) => {
+            self.vars.get(var_name).map(|s| s.as_str()).unwrap_or("int").into()
+        },
         _ => "int".into(),
     }
 }
@@ -544,6 +617,17 @@ fn print_fmt(&self, e: &Expr, code: &str) -> Result<(String, String), CCodeGenEr
         Expr::Variable(v) => {
             let ty = self.vars.get(v).map(|s| s.as_str()).unwrap_or("int");
             match ty {
+                "int" => ("%d".into(), code.into()),
+                "float" => ("%f".into(), code.into()),
+                "double" => ("%f".into(), code.into()),
+                "char*" => ("%s".into(), code.into()),
+                _ => ("%s".into(), code.into()),
+            }
+        }
+        Expr::Index { sequence, index: _ } => {
+            // For array indexing expressions, infer the type of the sequence
+            let ty = self.infer_type(sequence);
+            match ty.as_str() {
                 "int" => ("%d".into(), code.into()),
                 "float" => ("%f".into(), code.into()),
                 "double" => ("%f".into(), code.into()),

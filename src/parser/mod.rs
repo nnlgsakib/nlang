@@ -219,7 +219,28 @@ impl<'a> Parser<'a> {
     }
     
     fn parse_type(&mut self) -> Result<Type, ParseError> {
-        if self.match_identifier("int") {
+        // Check for array type syntax: [T; N]
+        if self.match_token(&TokenType::LeftBracket) {
+            let element_type = self.parse_type()?;
+            
+            self.consume(&TokenType::Semicolon, "Expected ';' in array type")?;
+            
+            // Parse array size (must be a positive integer literal)
+            let size_token = self.advance();
+            let size = match &size_token.token_type {
+                TokenType::Integer(n) if *n > 0 => *n as usize,
+                _ => {
+                    return Err(ParseError {
+                        message: "Array size must be a positive integer".to_string(),
+                        line: size_token.line,
+                    })
+                }
+            };
+            
+            self.consume(&TokenType::RightBracket, "Expected ']' after array type")?;
+            
+            Ok(Type::Array(Box::new(element_type), size))
+        } else if self.match_identifier("int") {
             Ok(Type::Integer)
         } else if self.match_identifier("i8") {
             Ok(Type::I8)
@@ -530,6 +551,15 @@ impl<'a> Parser<'a> {
                 });
             }
             
+            // Handle array assignment: arr[i] = value
+            if let Expr::Index { sequence, index } = expr {
+                return Ok(Expr::AssignIndex {
+                    sequence,
+                    index,
+                    value: Box::new(value),
+                });
+            }
+            
             return Err(ParseError {
                 message: "Invalid assignment target".to_string(),
                 line: equals.line,
@@ -671,6 +701,11 @@ impl<'a> Parser<'a> {
                 };
                 self.consume(&TokenType::Identifier(prop_name.clone()), "Expected property name after '.'")?;
                 expr = Expr::Get { object: Box::new(expr), name: prop_name };
+            } else if self.match_token(&TokenType::LeftBracket) {
+                // Parse array indexing: array[index]
+                let index = self.expression()?;
+                self.consume(&TokenType::RightBracket, "Expected ']' after index expression")?;
+                expr = Expr::Index { sequence: Box::new(expr), index: Box::new(index) };
             } else {
                 break;
             }
@@ -813,6 +848,23 @@ impl<'a> Parser<'a> {
             let expr = self.expression()?;
             self.consume(&TokenType::RightParen, "Expected ')' after expression")?;
             return Ok(expr);
+        }
+        
+        // Array literal: [expr1, expr2, ...]
+        if self.match_token(&TokenType::LeftBracket) {
+            let mut elements = Vec::new();
+            
+            if !self.check(&TokenType::RightBracket) {
+                loop {
+                    elements.push(self.expression()?);
+                    if !self.match_token(&TokenType::Comma) {
+                        break;
+                    }
+                }
+            }
+            
+            self.consume(&TokenType::RightBracket, "Expected ']' after array elements")?;
+            return Ok(Expr::ArrayLiteral { elements });
         }
         
         Err(ParseError {

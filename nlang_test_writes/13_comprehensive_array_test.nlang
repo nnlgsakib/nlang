@@ -1,0 +1,129 @@
+// 13 - Comprehensive Array Test
+// Combined from all array test files to demonstrate complete array functionality
+// Note: Array assignment operations (arr[i] = value) are not supported in current nlang version
+
+def main() {
+    println("=== Array Functionality Test ===");
+    
+    // Section 1: Basic Array Declaration and Initialization
+    println("\n1. Basic Array Declaration and Initialization:");
+    
+    // Basic array declaration and initialization
+    store arr: [int; 3] = [1, 2, 3];
+    store numbers: [int; 5] = [1, 2, 3, 4, 5];
+    
+    // Array indexing (reading only)
+    store first = arr[0];
+    store second = arr[1]; 
+    store third = arr[2];
+    
+    print("Array [1, 2, 3] elements: ");
+    print(first); print(", "); print(second); print(", "); print(third);
+    println("");
+    
+    // Section 2: Array Reading and Operations
+    println("\n2. Array Reading and Operations:");
+    
+    // Array operations in expressions (reading only)
+    store sum = numbers[0] + numbers[1] + numbers[2];
+    store product = numbers[3] * numbers[4];
+    
+    print("Sum of first three elements: "); print(sum);
+    println("");
+    print("Product of last two elements: "); print(product);
+    println("");
+    
+    // Section 3: Different Array Types
+    println("\n3. Different Array Types:");
+    
+    // Array with different types
+    store floats: [f64; 3] = [1.5, 2.7, 3.14];
+    store booleans: [bool; 2] = [true, false];
+    
+    print("Float array: "); print(floats[0]); print(", "); print(floats[1]); print(", "); print(floats[2]);
+    println("");
+    print("Boolean array: "); print(booleans[0]); print(", "); print(booleans[1]);
+    println("");
+    
+    // Section 4: Multi-dimensional Arrays (Not supported in current nlang version)
+    println("\n4. Multi-dimensional Arrays:");
+    println("Multi-dimensional arrays are not supported in current nlang version");
+    
+    // Section 5: Array Literals with Expressions
+    println("\n5. Array Literals with Expressions:");
+    
+    // Array literal with expressions
+    store computed_array = [1 + 2, 3 * 4, 5 - 1];
+    
+    print("Computed array: ");
+    print(computed_array[0]); print(", "); print(computed_array[1]); print(", "); print(computed_array[2]);
+    println("");
+    
+    // Simple array access demonstration
+    store simple_access = computed_array[2]; // Direct access
+    print("Simple access result: "); print(simple_access);
+    println("");
+    
+    // Section 6: Array Bounds Testing
+    println("\n6. Array Bounds Testing:");
+    
+    // Valid access
+    store valid = numbers[4]; // Last element
+    print("Valid access (last element): "); print(valid);
+    println("");
+    
+    println("Array bounds checking completed");
+    
+    // Section 7: Array Printing Tests
+    println("\n7. Array Printing Tests:");
+    
+    // Test printing array elements individually
+    print("First element: "); print(numbers[0]); println("");
+    print("Second element: "); print(numbers[1]); println("");
+    print("Third element: "); print(numbers[2]); println("");
+    print("Fourth element: "); print(numbers[3]); println("");
+    print("Fifth element: "); print(numbers[4]); println("");
+    
+    // Test mixed type array printing
+    store mixed: [float; 3] = [1.5, 2.7, 3.1];
+    print("Mixed array elements: ");
+    print(mixed[0]); print(", "); print(mixed[1]); print(", "); print(mixed[2]);
+    println("");
+    
+    
+    // Section 8: Array Assignment Operations (NEW - Now Supported!)
+    println("\n8. Array Assignment Operations:");
+    
+    // Test array assignment operations
+    store test_arr: [int; 3] = [10, 20, 30];
+    
+    print("Original array: ");
+    print(test_arr[0]); print(", "); print(test_arr[1]); print(", "); print(test_arr[2]);
+    println("");
+    
+    // Assign new values to array elements
+    test_arr[0] = 100;
+    test_arr[1] = 200;
+    test_arr[2] = 300;
+    
+    print("After assignment: ");
+    print(test_arr[0]); print(", "); print(test_arr[1]); print(", "); print(test_arr[2]);
+    println("");
+    
+    // Test with float arrays
+    store float_arr: [f64; 2] = [1.1, 2.2];
+    
+    print("Original float array: ");
+    print(float_arr[0]); print(", "); print(float_arr[1]);
+    println("");
+    
+    float_arr[0] = 3.14;
+    float_arr[1] = 6.28;
+    
+    print("After float assignment: ");
+    print(float_arr[0]); print(", "); print(float_arr[1]);
+    println("");
+    
+    println("\n=== Array Test Completed Successfully ===");
+    println("Array assignment operations are now supported!");
+}

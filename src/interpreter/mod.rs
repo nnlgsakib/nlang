@@ -23,6 +23,8 @@ pub enum InterpreterError {
     Break,
     #[error("Continue statement executed")]
     Continue,
+    #[error("Index out of bounds: index {index}, length {length}")]
+    IndexOutOfBounds { index: i64, length: usize },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -31,6 +33,30 @@ pub enum Value {
     Float(f64),
     Boolean(bool),
     String(String),
+    Array(Vec<Value>),
+}
+
+use std::fmt;
+
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Value::Integer(i) => write!(f, "{}", i),
+            Value::Float(fl) => write!(f, "{}", fl),
+            Value::Boolean(b) => write!(f, "{}", b),
+            Value::String(s) => write!(f, "{}", s),
+            Value::Array(arr) => {
+                write!(f, "[")?;
+                for (i, item) in arr.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", item)?;
+                }
+                write!(f, "]")
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -48,6 +74,7 @@ impl Value {
             Value::Float(_) => "float",
             Value::Boolean(_) => "bool",
             Value::String(_) => "string",
+            Value::Array(_) => "array",
         }
     }
     
@@ -476,6 +503,7 @@ impl Interpreter {
                                 Value::Integer(i) => print!("{}", i),
                                 Value::Float(f) => print!("{}", f),
                                 Value::Boolean(b) => print!("{}", b),
+                                Value::Array(arr) => print!("[{}]", arr.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", ")),
                             }
                             use std::io::{self, Write};
                             io::stdout().flush().unwrap();
@@ -493,6 +521,7 @@ impl Interpreter {
                                 Value::Integer(i) => println!("{}", i),
                                 Value::Float(f) => println!("{}", f),
                                 Value::Boolean(b) => println!("{}", b),
+                                Value::Array(arr) => println!("[{}]", arr.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", ")),
                             }
                             Ok(Value::Integer(0)) // Return null/void equivalent
                         }
@@ -528,6 +557,9 @@ impl Interpreter {
                                 Value::Float(f) => Ok(Value::String(f.to_string())),
                                 Value::Boolean(b) => Ok(Value::String(b.to_string())),
                                 Value::String(s) => Ok(Value::String(s)), // Already a string
+                                Value::Array(_) => Err(InterpreterError::InvalidOperation {
+                                    message: "Cannot convert array to string".to_string(),
+                                }),
                             }
                         }
                         "int" => {
@@ -549,6 +581,9 @@ impl Interpreter {
                                         }),
                                     }
                                 }
+                                Value::Array(_) => Err(InterpreterError::InvalidOperation {
+                                    message: "Cannot convert array to integer".to_string(),
+                                }),
                             }
                         }
                         "float" => {
@@ -570,6 +605,9 @@ impl Interpreter {
                                         }),
                                     }
                                 }
+                                Value::Array(_) => Err(InterpreterError::InvalidOperation {
+                                    message: "Cannot convert array to float".to_string(),
+                                }),
                             }
                         }
                         "abs" => {
@@ -657,6 +695,73 @@ impl Interpreter {
                 let val = self.evaluate_expression(value, env)?;
                 env.set_variable(name.clone(), val.clone())?;
                 Ok(val)
+            }
+            Expr::AssignIndex { sequence, index, value } => {
+                // Evaluate the sequence (array), index, and value
+                let sequence_val = self.evaluate_expression(sequence, env)?;
+                let index_val = self.evaluate_expression(index, env)?;
+                let value_val = self.evaluate_expression(value, env)?;
+                
+                match (sequence_val, index_val) {
+                    (Value::Array(mut arr), Value::Integer(idx)) => {
+                        // Check bounds
+                        if idx < 0 || idx >= arr.len() as i64 {
+                            return Err(InterpreterError::IndexOutOfBounds {
+                                index: idx,
+                                length: arr.len(),
+                            });
+                        }
+                        
+                        // Update the array element
+                        arr[idx as usize] = value_val.clone();
+                        
+                        // Update the array in the environment
+                        // For now, we assume the array is stored in a variable
+                        // This is a limitation - we need to handle the case where the sequence
+                        // is a complex expression that evaluates to an array
+                        if let Expr::Variable(var_name) = sequence.as_ref() {
+                            env.set_variable(var_name.clone(), Value::Array(arr))?;
+                        } else {
+                            return Err(InterpreterError::InvalidOperation {
+                                message: "Complex array assignment not yet supported".to_string(),
+                            });
+                        }
+                        
+                        Ok(value_val)
+                    }
+                    _ => Err(InterpreterError::InvalidOperation {
+                        message: "Array assignment only supported for arrays with integer indices".to_string(),
+                    }),
+                }
+            }
+            Expr::ArrayLiteral { elements } => {
+                // Evaluate all elements in the array literal
+                let mut evaluated_elements = Vec::new();
+                for element in elements {
+                    evaluated_elements.push(self.evaluate_expression(element, env)?);
+                }
+                Ok(Value::Array(evaluated_elements))
+            }
+            Expr::Index { sequence, index } => {
+                // Evaluate the sequence (array) and index
+                let sequence_val = self.evaluate_expression(sequence, env)?;
+                let index_val = self.evaluate_expression(index, env)?;
+                
+                match (sequence_val, index_val) {
+                    (Value::Array(arr), Value::Integer(idx)) => {
+                        // Check bounds
+                        if idx < 0 || idx >= arr.len() as i64 {
+                            return Err(InterpreterError::IndexOutOfBounds {
+                                index: idx,
+                                length: arr.len(),
+                            });
+                        }
+                        Ok(arr[idx as usize].clone())
+                    }
+                    _ => Err(InterpreterError::InvalidOperation {
+                        message: "Indexing only supported for arrays with integer indices".to_string(),
+                    }),
+                }
             }
             _ => {
                 Err(InterpreterError::InvalidOperation {

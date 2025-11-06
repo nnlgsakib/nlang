@@ -75,7 +75,7 @@ pub enum Type {
     Float,
     Boolean,
     String,
-    Array(Box<Type>),
+    Array(Box<Type>, usize),
     Function { params: Vec<Type>, return_type: Box<Type> },
     Void,
 }
@@ -118,6 +118,14 @@ pub enum Expr {
     Assign {
         name: String,
         value: Box<Expr>,
+    },
+    AssignIndex {
+        sequence: Box<Expr>,
+        index: Box<Expr>,
+        value: Box<Expr>,
+    },
+    ArrayLiteral {
+        elements: Vec<Expr>,
     },
 }
 
@@ -183,7 +191,7 @@ impl fmt::Display for Type {
             Type::Float => write!(f, "f64"),
             Type::Boolean => write!(f, "bool"),
             Type::String => write!(f, "string"),
-            Type::Array(inner) => write!(f, "array[{}]", inner),
+            Type::Array(inner, size) => write!(f, "[{}; {}]", inner, size),
             Type::Function { params, return_type } => {
                 let param_types: Vec<String> = params.iter().map(|p| format!("{}", p)).collect();
                 write!(f, "fn({}) -> {}", param_types.join(", "), return_type)

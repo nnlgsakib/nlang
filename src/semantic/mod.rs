@@ -848,6 +848,72 @@ impl SemanticAnalyzer {
                 
                 Ok(Expr::Assign { name, value: analyzed_value })
             },
+            Expr::AssignIndex { sequence, index, value } => {
+                // Analyze the sequence, index, and value expressions
+                let analyzed_sequence = Box::new(self.analyze_expr(*sequence)?);
+                let analyzed_index = Box::new(self.analyze_expr(*index)?);
+                let analyzed_value = Box::new(self.analyze_expr(*value)?);
+                
+                // The sequence must be an array
+                let sequence_type = self.infer_type(&analyzed_sequence)?;
+                if !matches!(sequence_type, Type::Array(_, _)) {
+                    return Err(SemanticError {
+                        message: format!("Cannot index into non-array type: {:?}", sequence_type),
+                    });
+                }
+                
+                // The index must be an integer type
+                let index_type = self.infer_type(&analyzed_index)?;
+                if !matches!(index_type, Type::Integer | Type::I8 | Type::I16 | Type::I32 | Type::I64 | Type::ISize | Type::U8 | Type::U16 | Type::U32 | Type::U64 | Type::USize) {
+                    return Err(SemanticError {
+                        message: format!("Array index must be integer type, got: {:?}", index_type),
+                    });
+                }
+                
+                // Extract the element type from the array type
+                let element_type = match sequence_type {
+                    Type::Array(inner_type, _) => *inner_type,
+                    _ => unreachable!(), // We already checked it's an array
+                };
+                
+                // Check that the value type matches the array element type
+                let value_type = self.infer_type(&analyzed_value)?;
+                if element_type != value_type {
+                    return Err(SemanticError {
+                        message: format!("Type mismatch in array assignment: expected {:?}, got {:?}", element_type, value_type),
+                    });
+                }
+                
+                // Validate literal bounds for integer types
+                if let Expr::Literal(literal) = analyzed_value.as_ref() {
+                    self.validate_literal_bounds(literal, &element_type)?;
+                }
+                
+                Ok(Expr::AssignIndex {
+                    sequence: analyzed_sequence,
+                    index: analyzed_index,
+                    value: analyzed_value,
+                })
+            },
+            Expr::ArrayLiteral { elements } => {
+                // Check array literal bounds (max 1024 elements)
+                if elements.len() > 1024 {
+                    return Err(SemanticError {
+                        message: format!("Array literal too large ({} elements), maximum allowed is 1024", elements.len()),
+                    });
+                }
+                
+                // Analyze each element in the array literal
+                let mut analyzed_elements = Vec::new();
+                for element in elements {
+                    analyzed_elements.push(self.analyze_expr(element)?);
+                }
+                
+                // Use type inference to validate that all elements have the same type
+                self.infer_type(&Expr::ArrayLiteral { elements: analyzed_elements.clone() })?;
+                
+                Ok(Expr::ArrayLiteral { elements: analyzed_elements })
+            },
         }
     }
     
@@ -1166,6 +1232,70 @@ impl SemanticAnalyzer {
                         message: "Complex field access expressions not yet supported".to_string(),
                     })
                 }
+            },
+            Expr::Index { sequence, index } => {
+                // Array indexing: sequence[index]
+                let sequence_type = self.infer_type(sequence)?;
+                let index_type = self.infer_type(index)?;
+                
+                // Validate that sequence is an array type
+                if let Type::Array(element_type, _) = sequence_type {
+                    // Validate that index is an integer type
+                    if index_type == Type::Integer || index_type == Type::I8 || index_type == Type::I16 || 
+                       index_type == Type::I32 || index_type == Type::I64 || index_type == Type::ISize ||
+                       index_type == Type::U8 || index_type == Type::U16 || index_type == Type::U32 ||
+                       index_type == Type::U64 || index_type == Type::USize {
+                        
+                        // Check for constant index bounds if possible
+                        if let Expr::Literal(Literal::Integer(index_value)) = index.as_ref() {
+                            // For array literals, check if index is out of bounds
+                            if let Expr::ArrayLiteral { elements } = sequence.as_ref() {
+                                let index_usize = *index_value as usize;
+                                if index_usize >= elements.len() {
+                                    return Err(SemanticError {
+                                        message: format!("Array index {} out of bounds for array of size {}", 
+                                                       index_value, elements.len()),
+                                    });
+                                }
+                            }
+                        }
+                        
+                        Ok(*element_type)
+                    } else {
+                        Err(SemanticError {
+                            message: format!("Array index must be an integer type, got {:?}", index_type),
+                        })
+                    }
+                } else {
+                    Err(SemanticError {
+                        message: format!("Cannot index non-array type: {:?}", sequence_type),
+                    })
+                }
+            },
+            Expr::ArrayLiteral { elements } => {
+                // Array literal: [expr1, expr2, ...]
+                if elements.is_empty() {
+                    return Err(SemanticError {
+                        message: "Array literals must have at least one element".to_string(),
+                    });
+                }
+                
+                // Infer type of first element
+                let first_type = self.infer_type(&elements[0])?;
+                
+                // Check that all elements have the same type
+                for (i, element) in elements.iter().enumerate().skip(1) {
+                    let element_type = self.infer_type(element)?;
+                    if element_type != first_type {
+                        return Err(SemanticError {
+                            message: format!("Array element {} has type {:?}, expected {:?}", 
+                                           i, element_type, first_type),
+                        });
+                    }
+                }
+                
+                // Return array type with the element type and size
+                Ok(Type::Array(Box::new(first_type), elements.len()))
             },
             _ => {
                 Err(SemanticError {
