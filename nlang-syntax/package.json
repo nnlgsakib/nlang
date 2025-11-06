@@ -1,0 +1,25 @@
+{
+  "name": "nlang-syntax",
+  "displayName": "NLANG-SYNTAX",
+  "description": "Syntax highlighting for the Nlang programming language - a modern systems programming language with Python-like syntax, static typing, and multiple compilation backends (LLVM IR and C transpilation). Supports all Nlang language features including variables, functions, control flow, imports, and built-in functions.",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.105.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [{
+      "id": "nlang",
+      "aliases": ["nlang", "nlang"],
+      "extensions": [".nlang"],
+      "configuration": "./language-configuration.json"
+    }],
+    "grammars": [{
+      "language": "nlang",
+      "scopeName": "source.nlang",
+      "path": "./syntaxes/nlang.tmLanguage.json"
+    }]
+  }
+}
