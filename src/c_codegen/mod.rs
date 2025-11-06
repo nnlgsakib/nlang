@@ -334,18 +334,18 @@ fn emit_stmt(&mut self, stmt: &Statement) -> Result<(), CCodeGenError> {
             if let Some(init) = initializer {
                 let init_code = self.emit_expr(init)?;
                 
-                // Handle array types specially - in C, arrays are declared as "type name[size]"
-                if let Some(Type::Array(element_type, size)) = var_type {
-                    let element_ty = self.type_to_c(element_type);
-                    self.line(&format!("{element_ty} {name}[{size}] = {init_code};"));
-                } else {
-                    self.line(&format!("{ty} {name} = {init_code};"));
-                }
+                // Handle array types specially - in C, arrays are declared as "type name[size1][size2]..."
+            if let Some(array_type) = var_type {
+                let c_decl = self.array_type_to_c_decl(array_type, name);
+                self.line(&format!("{c_decl} = {init_code};"));
             } else {
-                // Handle array types specially - in C, arrays are declared as "type name[size]"
-                if let Some(Type::Array(element_type, size)) = var_type {
-                    let element_ty = self.type_to_c(element_type);
-                    self.line(&format!("{element_ty} {name}[{size}];"));
+                self.line(&format!("{ty} {name} = {init_code};"));
+            }
+            } else {
+                // Handle array types specially - in C, arrays are declared as "type name[size1][size2]..."
+                if let Some(array_type) = var_type {
+                    let c_decl = self.array_type_to_c_decl(array_type, name);
+                    self.line(&format!("{c_decl};"));
                 } else {
                     self.line(&format!("{ty} {name};"));
                 }
@@ -461,23 +461,32 @@ fn emit_expr(&mut self, e: &Expr) -> Result<String, CCodeGenError> {
             format!("({seq_code}[{idx_code}])")
         }
         Expr::ArrayLiteral { elements } => {
-            let mut element_codes = Vec::new();
-            for element in elements {
-                element_codes.push(self.emit_expr(element)?);
-            }
-            
-            // For array literals, we need to create a temporary array
-            // This is a simple implementation that creates a static array
-            if element_codes.is_empty() {
-                return Ok("NULL".to_string());
-            }
-            
-            // Use proper C array initialization syntax
-            format!("{{{}}}", element_codes.join(", "))
+            self.emit_array_literal(elements)?
         }
         _ => return Err(CCodeGenError::Unsupported(format!("expr {:?}", e))),
     })
 }
+
+fn emit_array_literal(&mut self, elements: &[Expr]) -> Result<String, CCodeGenError> {
+    if elements.is_empty() {
+        return Ok("NULL".to_string());
+    }
+    
+    let mut element_codes = Vec::new();
+    for element in elements {
+        // Recursively handle nested array literals
+        if let Expr::ArrayLiteral { elements: nested_elements } = element {
+            let nested_code = self.emit_array_literal(nested_elements)?;
+            element_codes.push(nested_code);
+        } else {
+            element_codes.push(self.emit_expr(element)?);
+        }
+    }
+    
+    // Generate proper C array initialization syntax with nested braces
+    Ok(format!("{{{}}}", element_codes.join(", ")))
+}
+
 fn emit_lit(&self, l: &Literal) -> Result<String, CCodeGenError> {
     Ok(match l {
         Literal::Integer(i) => i.to_string(),
@@ -520,7 +529,21 @@ fn type_to_c(&self, t: &Type) -> String {
         Type::String => "const char*".into(),
         Type::Boolean => "int".into(),
         Type::Void => "void".into(),
-        Type::Array(inner, size) => format!("{}[{}]", self.type_to_c(inner), size),        Type::Function { .. } => "void*".into(),
+        Type::Array(inner, _) => self.type_to_c(inner),
+        Type::Function { .. } => "void*".into(),
+    }
+}
+
+fn array_type_to_c_decl(&self, t: &Type, name: &str) -> String {
+    match t {
+        Type::Array(inner, size) => {
+            let base_type = self.array_type_to_c_decl(inner, name);
+            format!("{}[{}]", base_type, size)
+        }
+        _ => {
+            let base_type = self.type_to_c(t);
+            format!("{} {}", base_type, name)
+        }
     }
 }
 fn binop(&self, op: &BinaryOperator) -> &'static str {

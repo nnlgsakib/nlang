@@ -45,9 +45,53 @@ def main() {
     print("Boolean array: "); print(booleans[0]); print(", "); print(booleans[1]);
     println("");
     
-    // Section 4: Multi-dimensional Arrays (Not supported in current nlang version)
+    // Section 4: Multi-dimensional Arrays (NOW SUPPORTED!)
     println("\n4. Multi-dimensional Arrays:");
-    println("Multi-dimensional arrays are not supported in current nlang version");
+    
+    // 2D array declaration and initialization
+    store matrix: [[int; 2]; 2] = [[1, 2], [3, 4]];
+    
+    print("2D array: ");
+    print(matrix[0][0]); print(", "); print(matrix[0][1]); print(" | ");
+    print(matrix[1][0]); print(", "); print(matrix[1][1]);
+    println("");
+    
+    // 3D array
+    store cube: [[[int; 2]; 2]; 2] = [[[1, 2], [3, 4]], [[5, 6], [7, 8]]];
+    
+    print("3D array first slice: ");
+    print(cube[0][0][0]); print(", "); print(cube[0][0][1]); print(" | ");
+    print(cube[0][1][0]); print(", "); print(cube[0][1][1]);
+    println("");
+    
+    print("3D array second slice: ");
+    print(cube[1][0][0]); print(", "); print(cube[1][0][1]); print(" | ");
+    print(cube[1][1][0]); print(", "); print(cube[1][1][1]);
+    println("");
+    
+    // Multi-dimensional array assignment
+    matrix[0][0] = 100;
+    matrix[0][1] = 200;
+    matrix[1][0] = 300;
+    matrix[1][1] = 400;
+    
+    print("After 2D assignment: ");
+    print(matrix[0][0]); print(", "); print(matrix[0][1]); print(" | ");
+    print(matrix[1][0]); print(", "); print(matrix[1][1]);
+    println("");
+    
+    // Multi-dimensional array with different types
+    store float_matrix: [[f64; 2]; 2] = [[1.1, 2.2], [3.3, 4.4]];
+    
+    print("Float 2D array: ");
+    print(float_matrix[0][0]); print(", "); print(float_matrix[0][1]); print(" | ");
+    print(float_matrix[1][0]); print(", "); print(float_matrix[1][1]);
+    println("");
+    
+    // Nested array operations
+    store result = matrix[0][0] + matrix[1][1] * 2;
+    print("Nested operation result: "); print(result);
+    println("");
     
     // Section 5: Array Literals with Expressions
     println("\n5. Array Literals with Expressions:");
@@ -125,5 +169,5 @@ def main() {
     println("");
     
     println("\n=== Array Test Completed Successfully ===");
-    println("Array assignment operations are now supported!");
+    println("Array assignment operations and multi-dimensional arrays are now fully supported!");
 }
