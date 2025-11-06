@@ -1,4 +1,4 @@
 /target
 *.exe
 *.ll
-/nlang-syntax
+nlang-syntax/
