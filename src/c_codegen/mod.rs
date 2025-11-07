@@ -110,6 +110,18 @@ fn collect_strings(&mut self, prog: &Program) {
                 walk_expr(generator, condition);
                 walk(generator, body);
             }
+            Statement::For { initializer, condition, increment, body, .. } => {
+                if let Some(init) = initializer {
+                    walk(generator, init);
+                }
+                if let Some(cond) = condition {
+                    walk_expr(generator, cond);
+                }
+                if let Some(inc) = increment {
+                    walk_expr(generator, inc);
+                }
+                walk(generator, body);
+            }
             Statement::Return { value } => {
                 if let Some(v) = value { walk_expr(generator, v); }
             }
@@ -364,6 +376,54 @@ fn emit_stmt(&mut self, stmt: &Statement) -> Result<(), CCodeGenError> {
             let cond = self.emit_expr(condition)?;
             self.write(&format!("while ({cond}) "));
             self.block(|generator| { generator.emit_stmt(body).unwrap(); });
+        }
+        Statement::For { initializer, condition, increment, body } => {
+            self.write("for (");
+
+            if let Some(init_stmt) = initializer {
+                match &**init_stmt {
+                    Statement::LetDeclaration { name, initializer, var_type, .. } => {
+                        let ty = if let Some(declared_type) = var_type {
+                            self.type_to_c(declared_type)
+                        } else if let Some(init) = initializer {
+                            self.infer_type(init)
+                        } else {
+                            "int".to_string()
+                        };
+                        self.vars.insert(name.clone(), ty.clone());
+                        if let Some(init) = initializer {
+                            let init_code = self.emit_expr(init)?;
+                            self.write(&format!("{ty} {name} = {init_code}"));
+                        } else {
+                            self.write(&format!("{ty} {name}"));
+                        }
+                    }
+                    Statement::Expression(expr) => {
+                        let code = self.emit_expr(expr)?;
+                        self.write(&code);
+                    }
+                    _ => return Err(CCodeGenError::Unsupported("for loop initializer".into())),
+                }
+            }
+
+            self.write("; ");
+
+            if let Some(cond_expr) = condition {
+                let cond_code = self.emit_expr(cond_expr)?;
+                self.write(&cond_code);
+            }
+
+            self.write("; ");
+
+            if let Some(inc_expr) = increment {
+                let inc_code = self.emit_expr(inc_expr)?;
+                self.write(&inc_code);
+            }
+
+            self.write(") ");
+            self.block(|generator| {
+                generator.emit_stmt(body).unwrap();
+            });
         }
         Statement::Return { value } => {
             if let Some(v) = value {

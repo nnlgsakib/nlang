@@ -448,6 +448,10 @@ impl<'a> Parser<'a> {
         if self.match_token(&TokenType::While) {
             return self.while_statement();
         }
+
+        if self.match_token(&TokenType::For) {
+            return self.for_statement();
+        }
         
         if self.match_token(&TokenType::Return) {
             return self.return_statement();
@@ -504,6 +508,71 @@ impl<'a> Parser<'a> {
         let body = Box::new(self.statement()?);
         
         Ok(Statement::While { condition, body })
+    }
+
+    fn for_statement(&mut self) -> Result<Statement, ParseError> {
+        self.consume(&TokenType::LeftParen, "Expected '(' after 'for'")?;
+
+        let initializer = if self.match_token(&TokenType::Semicolon) {
+            None
+        } else if self.match_token(&TokenType::Store) {
+            let name = if let TokenType::Identifier(name) = &self.peek().token_type {
+                name.clone()
+            } else {
+                return Err(ParseError {
+                    message: "Expected variable name".to_string(),
+                    line: self.peek().line,
+                });
+            };
+            self.consume(&TokenType::Identifier(name.clone()), "Expected variable name")?;
+            
+            let mut var_type = None;
+            if self.match_token(&TokenType::Colon) {
+                var_type = Some(self.parse_type()?);
+            }
+            
+            let mut initializer_expr = None;
+            if self.match_token(&TokenType::Assign) {
+                initializer_expr = Some(self.expression()?);
+            }
+            
+            self.consume(&TokenType::Semicolon, "Expected ';' after for loop initializer")?;
+
+            let let_stmt = Statement::LetDeclaration {
+                name,
+                initializer: initializer_expr,
+                var_type,
+                is_exported: false,
+            };
+            Some(Box::new(let_stmt))
+        } else {
+            let expr = self.expression()?;
+            self.consume(&TokenType::Semicolon, "Expected ';' after for loop initializer")?;
+            Some(Box::new(Statement::Expression(expr)))
+        };
+
+        let condition = if self.check(&TokenType::Semicolon) {
+            None
+        } else {
+            Some(Box::new(self.expression()?))
+        };
+        self.consume(&TokenType::Semicolon, "Expected ';' after loop condition")?;
+
+        let increment = if self.check(&TokenType::RightParen) {
+            None
+        } else {
+            Some(Box::new(self.expression()?))
+        };
+        self.consume(&TokenType::RightParen, "Expected ')' after for clauses")?;
+
+        let body = Box::new(self.statement()?);
+
+        Ok(Statement::For {
+            initializer,
+            condition,
+            increment,
+            body,
+        })
     }
     
     fn return_statement(&mut self) -> Result<Statement, ParseError> {

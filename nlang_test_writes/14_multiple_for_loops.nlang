@@ -1,0 +1,43 @@
+def main() {
+    println("--- Multiple For Loops Test ---");
+
+    // Loop 1: Simple counter
+    println("Loop 1: Counting up");
+    for (store i = 0; i < 3; i = i + 1) {
+        println(i);
+    }
+
+    // Loop 2: Countdown
+    println("Loop 2: Counting down");
+    for (store j = 2; j >= 0; j = j - 1) {
+        println(j);
+    }
+
+    // Loop 3: Nested loops
+    println("Loop 3: Nested loops (2x2)");
+    for (store x = 0; x < 2; x = x + 1) {
+        for (store y = 0; y < 2; y = y + 1) {
+            print("x=");
+            print(x);
+            print(", y=");
+            println(y);
+        }
+    }
+
+    // Loop 4: For loop with no initializer
+    println("Loop 4: No initializer");
+    store k = 0;
+    for (; k < 3; k = k + 1) {
+        println(k);
+    }
+
+    // Loop 5: For loop with no condition (should be infinite if not for break)
+    println("Loop 5: No condition (with break)");
+    store l = 0;
+    for (store m = 0; ; m = m + 1) {
+        println(m);
+        if (m == 2) {
+            break;
+        }
+    }
+}

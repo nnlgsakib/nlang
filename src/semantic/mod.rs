@@ -445,6 +445,44 @@ impl SemanticAnalyzer {
                     body: analyzed_body,
                 })
             },
+            Statement::For { initializer, condition, increment, body } => {
+                self.begin_scope();
+
+                let analyzed_initializer = if let Some(init) = initializer {
+                    Some(Box::new(self.analyze_statement(*init)?))
+                } else {
+                    None
+                };
+
+                let analyzed_condition = if let Some(cond) = condition {
+                    let analyzed_cond_expr = self.analyze_expr(*cond)?;
+                    if self.infer_type(&analyzed_cond_expr)? != Type::Boolean {
+                        return Err(SemanticError {
+                            message: "For loop condition must be of boolean type".to_string(),
+                        });
+                    }
+                    Some(Box::new(analyzed_cond_expr))
+                } else {
+                    None
+                };
+
+                let analyzed_body = Box::new(self.analyze_statement(*body)?);
+
+                let analyzed_increment = if let Some(inc) = increment {
+                    Some(Box::new(self.analyze_expr(*inc)?))
+                } else {
+                    None
+                };
+
+                self.end_scope();
+
+                Ok(Statement::For {
+                    initializer: analyzed_initializer,
+                    condition: analyzed_condition,
+                    increment: analyzed_increment,
+                    body: analyzed_body,
+                })
+            },
             Statement::Return { value } => {
                 let analyzed_value = match value {
                     Some(expr) => Some(Box::new(self.analyze_expr(*expr)?)),

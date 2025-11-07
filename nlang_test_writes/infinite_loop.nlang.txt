@@ -1,0 +1,10 @@
+def main() {
+    println("--- Infinite For Loop Test ---");
+    println("This program will print numbers indefinitely.");
+    println("Press Ctrl+C to stop.");
+
+    // Infinite loop: no condition
+    for (store i = 0; ; i = i + 1) {
+        println(i);
+    }
+}

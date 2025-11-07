@@ -33,6 +33,12 @@ pub enum Statement {
         condition: Box<Expr>,
         body: Box<Statement>,
     },
+    For {
+        initializer: Option<Box<Statement>>,
+        condition: Option<Box<Expr>>,
+        increment: Option<Box<Expr>>,
+        body: Box<Statement>,
+    },
     Return {
         value: Option<Box<Expr>>,
     },

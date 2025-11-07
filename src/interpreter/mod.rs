@@ -403,6 +403,55 @@ impl Interpreter {
                 }
                 Ok(())
             }
+            Statement::For { initializer, condition, increment, body } => {
+                let mut declared_var_name: Option<String> = None;
+
+                if let Some(init_stmt) = initializer {
+                    if let Statement::LetDeclaration { name, .. } = &**init_stmt {
+                        declared_var_name = Some(name.clone());
+                    }
+                    self.execute_statement(init_stmt, env)?;
+                }
+
+                loop {
+                    let cond_val = if let Some(cond_expr) = condition {
+                        self.evaluate_expression(cond_expr, env)?.to_bool()?
+                    } else {
+                        true // No condition means infinite loop
+                    };
+
+                    if !cond_val {
+                        break;
+                    }
+
+                    match self.execute_statement(body, env) {
+                        Ok(()) => {},
+                        Err(InterpreterError::Break) => break,
+                        Err(InterpreterError::Continue) => {
+                            if let Some(inc_expr) = increment {
+                                self.evaluate_expression(inc_expr, env)?;
+                            }
+                            continue;
+                        },
+                        Err(other) => {
+                            if let Some(name) = declared_var_name {
+                                env.variables.remove(&name);
+                            }
+                            return Err(other);
+                        }
+                    }
+
+                    if let Some(inc_expr) = increment {
+                        self.evaluate_expression(inc_expr, env)?;
+                    }
+                }
+
+                if let Some(name) = declared_var_name {
+                    env.variables.remove(&name);
+                }
+
+                Ok(())
+            }
             Statement::FunctionDeclaration { .. } => {
                 // Already handled in first pass
                 Ok(())
