@@ -477,6 +477,32 @@ impl Interpreter {
             Statement::Continue => {
                 Err(InterpreterError::Continue)
             }
+            Statement::Pick { expression, cases, default } => {
+                let value_to_match = self.evaluate_expression(expression, env)?;
+                let mut matched = false;
+
+                for case in cases {
+                    for case_value_expr in &case.values {
+                        let case_value = self.evaluate_expression(case_value_expr, env)?;
+                        if value_to_match == case_value {
+                            self.execute_statement(&case.body, env)?;
+                            matched = true;
+                            break;
+                        }
+                    }
+                    if matched {
+                        break;
+                    }
+                }
+
+                if !matched {
+                    if let Some(default_body) = default {
+                        self.execute_statement(default_body, env)?;
+                    }
+                }
+
+                Ok(())
+            }
             _ => {
                 // Handle other statement types as needed
                 Ok(())

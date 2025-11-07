@@ -23,6 +23,9 @@ pub enum TokenType {
     True,
     False,
     Null,
+    Pick,
+    When,
+    Default,
     
     // Identifiers and literals
     Identifier(String),
@@ -69,6 +72,7 @@ pub enum TokenType {
     Comma,
     Dot,
     Arrow,
+    FatArrow,
     
     // Assignment
     Assign,
@@ -190,6 +194,8 @@ impl Lexer {
             '=' => {
                 let token_type = if self.match_char('=') {
                     TokenType::EqualEqual
+                } else if self.match_char('>') {
+                    TokenType::FatArrow
                 } else {
                     TokenType::Assign
                 };
@@ -328,6 +334,9 @@ impl Lexer {
             "true" => TokenType::True,
             "false" => TokenType::False,
             "null" => TokenType::Null,
+            "pick" => TokenType::Pick,
+            "when" => TokenType::When,
+            "default" => TokenType::Default,
             _ => TokenType::Identifier(text.clone()),
         };
         
@@ -503,27 +512,51 @@ impl Lexer {
     }
     
     fn string(&mut self) -> Result<(), LexerError> {
+        let mut value = String::new();
         while self.peek() != '"' && !self.is_at_end() {
-            if self.peek() == '\n' {
-                self.line += 1;
+            let c = self.peek();
+            if c == '\\' {
+                self.advance(); // consume '\\'
+                if self.is_at_end() {
+                    return Err(LexerError {
+                        message: "Unterminated string.".to_string(),
+                        line: self.line,
+                    });
+                }
+                let next_char = self.peek();
+                self.advance(); // consume escaped char
+                match next_char {
+                    'n' => value.push('\n'),
+                    'r' => value.push('\r'),
+                    't' => value.push('\t'),
+                    '\\' => value.push('\\'),
+                    '"' => value.push('"'),
+                    other => {
+                        value.push('\\');
+                        value.push(other);
+                    }
+                }
+            } else {
+                if c == '\n' {
+                    self.line += 1;
+                }
+                self.advance();
+                value.push(c);
             }
-            self.advance();
         }
-        
+
         if self.is_at_end() {
             return Err(LexerError {
                 message: "Unterminated string".to_string(),
                 line: self.line,
             });
         }
-        
+
         // The closing ".
         self.advance();
-        
-        // Trim the surrounding quotes.
-        let value = self.source[(self.start + 1)..(self.current - 1)].to_string();
+
         self.add_token(TokenType::String(value));
-        
+
         Ok(())
     }
     

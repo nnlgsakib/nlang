@@ -1,0 +1,93 @@
+// 15_pick_statement.nlang
+// This program demonstrates the new 'pick' (match/switch) statement feature.
+
+def main() {
+    println("=== Pick Statement Examples ===");
+
+    // Example 1: Integer pick statement
+    println("\n--- Integer Pick ---");
+    store day = 3;
+    print("Day: ");
+    println(day);
+
+    pick day {
+        when 1 => println("It's Monday!");
+        when 2 => println("It's Tuesday!");
+        when 3, 4 => { // Multiple values in one when clause and a block
+            println("It's Wednesday or Thursday!");
+        }
+        when 5 => println("It's Friday!");
+        default => println("It's the weekend!");
+    }
+
+    store another_day = 6;
+    print("Another Day: ");
+    println(another_day);
+    pick another_day {
+        when 1 => println("Monday");
+        when 2 => println("Tuesday");
+        when 3 => println("Wednesday");
+        when 4 => println("Thursday");
+        when 5 => println("Friday");
+        default => println("Weekend!");
+    }
+
+    // Example 2: String pick statement
+    println("\n--- String Pick ---");
+    store fruit = "apple";
+    print("Fruit: ");
+    println(fruit);
+
+    pick fruit {
+        when "apple" => println("You picked an apple.");
+        when "banana", "grape" => println("You picked a banana or a grape.");
+        default => println("Unknown fruit.");
+    }
+
+    store color = "blue";
+    print("Color: ");
+    println(color);
+    pick color {
+        when "red" => println("Red color.");
+        when "green" => println("Green color.");
+        default => println("Other color.");
+    }
+
+    // Example 3: Boolean pick statement
+    println("\n--- Boolean Pick ---");
+    store is_active = true;
+    print("Is Active: ");
+    println(is_active);
+
+    pick is_active {
+        when true => println("Status: Active.");
+        when false => println("Status: Inactive.");
+    }
+
+    // Example 4: Pick with no default (if no match, nothing happens)
+    println("\n--- Pick with no default ---");
+    store value = 10;
+    print("Value: ");
+    println(value);
+    pick value {
+        when 1 => println("One");
+        when 2 => println("Two");
+    }
+    println("After pick with no default.");
+
+    // Example 5: Pick with expressions in when clauses
+    println("\n--- Pick with expressions in when ---");
+    store x = 5;
+    store y = 10;
+    print("x: "); println(x);
+    print("y: "); println(y);
+
+    pick x + y {
+        when 10 => println("Sum is 10.");
+        when 15 => println("Sum is 15.");
+        when 20 => println("Sum is 20.");
+        default => println("Sum is something else.");
+    }
+
+    println("\n=== Pick Statement Examples End ===");
+}

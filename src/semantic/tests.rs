@@ -57,6 +57,15 @@ mod tests {
     }
 
     #[test]
+    fn test_pick_statement_semantic_analysis() {
+        let source = "def main() { store x = 1; pick x { when 1 => {} when 2 => {} default => {} } }";
+        let tokens = tokenize(source).unwrap();
+        let program = parse(&tokens).unwrap();
+        let result = analyze(program);
+        assert!(result.is_ok());
+    }
+
+    #[test]
     fn test_i32_literal_type_inference() {
         let source = "def main() { store x = 42i32; }";
         let tokens = tokenize(source).unwrap();

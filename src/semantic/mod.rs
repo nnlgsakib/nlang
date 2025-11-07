@@ -1,4 +1,4 @@
-use crate::ast::{Program, Statement, Expr, Type, Literal, Parameter, BinaryOperator};
+use crate::ast::{Program, Statement, Expr, Type, Literal, Parameter, BinaryOperator, WhenCase};
 use crate::std_lib::StdLib;
 use crate::lexer::Lexer;
 use crate::parser::Parser;
@@ -419,7 +419,7 @@ impl SemanticAnalyzer {
                 let analyzed_then = Box::new(self.analyze_statement(*then_branch)?);
                 let analyzed_else = match else_branch {
                     Some(branch) => Some(Box::new(self.analyze_statement(*branch)?)),
-                    none => none,
+                    None => None,
                 };
                 
                 Ok(Statement::If {
@@ -590,6 +590,52 @@ impl SemanticAnalyzer {
             Statement::Continue => {
                 // Continue statements are valid - they will be handled by the interpreter
                 Ok(Statement::Continue)
+            },
+            Statement::Pick { expression, cases, default } => {
+                let analyzed_expression = self.analyze_expr(*expression)?;
+                let expr_type = self.infer_type(&analyzed_expression)?;
+
+                let mut analyzed_cases = Vec::new();
+                for case in cases {
+                    let mut analyzed_values = Vec::new();
+                    for value in case.values {
+                        let analyzed_value = self.analyze_expr(value)?;
+                        let value_type = self.infer_type(&analyzed_value)?;
+                        if !self.are_types_compatible(&value_type, &expr_type) {
+                            return Err(SemanticError {
+                                message: format!(
+                                    "Type mismatch in pick case: expression is {:?}, but case value is {:?}",
+                                    expr_type, value_type
+                                ),
+                            });
+                        }
+                        analyzed_values.push(analyzed_value);
+                    }
+
+                    self.begin_scope();
+                    let analyzed_body = Box::new(self.analyze_statement(*case.body)?);
+                    self.end_scope();
+
+                    analyzed_cases.push(WhenCase {
+                        values: analyzed_values,
+                        body: analyzed_body,
+                    });
+                }
+
+                let analyzed_default = if let Some(default_body) = default {
+                    self.begin_scope();
+                    let analyzed_default_body = Box::new(self.analyze_statement(*default_body)?);
+                    self.end_scope();
+                    Some(analyzed_default_body)
+                } else {
+                    None
+                };
+
+                Ok(Statement::Pick {
+                    expression: Box::new(analyzed_expression),
+                    cases: analyzed_cases,
+                    default: analyzed_default,
+                })
             },
         }
     }

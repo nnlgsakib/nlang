@@ -79,6 +79,27 @@ mod tests {
     }
 
     #[test]
+    fn test_pick_statement() {
+        let source = "pick x { when 1 => { return 1; } default => { return 0; } }";
+        let tokens = tokenize(source).unwrap();
+        let program = parse(&tokens).unwrap();
+
+        assert_eq!(program.statements.len(), 1);
+        match &program.statements[0] {
+            Statement::Pick { expression, cases, default } => {
+                assert_eq!(cases.len(), 1);
+                assert!(default.is_some());
+                if let Expr::Variable(name) = &**expression {
+                    assert_eq!(name, "x");
+                } else {
+                    panic!("Expected variable 'x' in pick expression");
+                }
+            }
+            _ => panic!("Expected pick statement"),
+        }
+    }
+
+    #[test]
     fn test_i32_literal() {
         let source = "store x = 42i32; store y = -123i32;";
         let tokens = tokenize(source).unwrap();

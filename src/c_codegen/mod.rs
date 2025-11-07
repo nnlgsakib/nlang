@@ -128,6 +128,18 @@ fn collect_strings(&mut self, prog: &Program) {
             Statement::Block { statements } => {
                 for s in statements { walk(generator, s); }
             }
+            Statement::Pick { expression, cases, default } => {
+                walk_expr(generator, expression);
+                for case in cases {
+                    for value in &case.values {
+                        walk_expr(generator, value);
+                    }
+                    walk(generator, &case.body);
+                }
+                if let Some(default_body) = default {
+                    walk(generator, default_body);
+                }
+            }
             _ => {}
         }
     }
@@ -442,6 +454,97 @@ fn emit_stmt(&mut self, stmt: &Statement) -> Result<(), CCodeGenError> {
         }
         Statement::Break => self.line("break;"),
         Statement::Continue => self.line("continue;"),
+        Statement::Pick { expression, cases, default } => {
+            let expr_code = self.emit_expr(expression)?;
+            let expr_type = self.infer_type(expression);
+
+            let is_integer_type = match expr_type.as_str() {
+                "int" | "int8_t" | "int16_t" | "int32_t" | "int64_t" | "intptr_t" |
+                "uint8_t" | "uint16_t" | "uint32_t" | "uint64_t" | "size_t" => true,
+                _ => false,
+            };
+
+            if is_integer_type {
+                self.line(&format!("switch ({}) {{", expr_code));
+                self.push();
+
+                for case in cases {
+                    for value in &case.values {
+                        let value_code = self.emit_expr(value)?;
+                        self.line(&format!("case {}:", value_code));
+                    }
+                    self.push();
+                    self.emit_stmt(&case.body)?;
+                    self.line("break;");
+                    self.pop();
+                }
+
+                if let Some(default_body) = default {
+                    self.line("default:");
+                    self.push();
+                    self.emit_stmt(default_body)?;
+                    self.line("break;");
+                    self.pop();
+                }
+
+                self.pop();
+                self.line("}");
+            } else if expr_type == "const char*" || expr_type == "char*" {
+                let mut first_case = true;
+                for case in cases {
+                    let mut conditions = Vec::new();
+                    for value in &case.values {
+                        let value_code = self.emit_expr(value)?;
+                        conditions.push(format!("strcmp({}, {}) == 0", expr_code, value_code));
+                    }
+
+                    if first_case {
+                        self.write(&format!("if ({}) ", conditions.join(" || ")));
+                        first_case = false;
+                    } else {
+                        self.write(&format!(" else if ({}) ", conditions.join(" || ")));
+                    }
+                    self.block(|generator| {
+                        generator.emit_stmt(&case.body).unwrap();
+                    });
+                }
+
+                if let Some(default_body) = default {
+                    self.write(" else ");
+                    self.block(|generator| {
+                        generator.emit_stmt(default_body).unwrap();
+                    });
+                }
+                self.empty();
+            } else {
+                let mut first_case = true;
+                for case in cases {
+                    let mut conditions = Vec::new();
+                    for value in &case.values {
+                        let value_code = self.emit_expr(value)?;
+                        conditions.push(format!("{} == {}", expr_code, value_code));
+                    }
+
+                    if first_case {
+                        self.write(&format!("if ({}) ", conditions.join(" || ")));
+                        first_case = false;
+                    } else {
+                        self.write(&format!(" else if ({}) ", conditions.join(" || ")));
+                    }
+                    self.block(|generator| {
+                        generator.emit_stmt(&case.body).unwrap();
+                    });
+                }
+
+                if let Some(default_body) = default {
+                    self.write(" else ");
+                    self.block(|generator| {
+                        generator.emit_stmt(default_body).unwrap();
+                    });
+                }
+                self.empty();
+            }
+        },
         _ => return Err(CCodeGenError::Unsupported(format!("stmt {:?}", stmt))),
     }
     Ok(())

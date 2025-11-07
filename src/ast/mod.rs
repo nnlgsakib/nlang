@@ -55,6 +55,17 @@ pub enum Statement {
     AssignMain {
         function_name: String,
     },
+    Pick {
+        expression: Box<Expr>,
+        cases: Vec<WhenCase>,
+        default: Option<Box<Statement>>,
+    },
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct WhenCase {
+    pub values: Vec<Expr>,
+    pub body: Box<Statement>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]

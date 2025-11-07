@@ -464,6 +464,10 @@ impl<'a> Parser<'a> {
         if self.match_token(&TokenType::Continue) {
             return self.continue_statement();
         }
+
+        if self.match_token(&TokenType::Pick) {
+            return self.pick_statement();
+        }
         
         self.expression_statement()
     }
@@ -594,6 +598,51 @@ impl<'a> Parser<'a> {
     fn continue_statement(&mut self) -> Result<Statement, ParseError> {
         self.consume(&TokenType::Semicolon, "Expected ';' after 'continue'")?;
         Ok(Statement::Continue)
+    }
+
+    fn pick_statement(&mut self) -> Result<Statement, ParseError> {
+        let expression = Box::new(self.expression()?);
+        self.consume(&TokenType::LeftBrace, "Expected '{' after pick expression")?;
+
+        let mut cases = Vec::new();
+        let mut default = None;
+
+        while !self.check(&TokenType::RightBrace) && !self.is_at_end() {
+            if self.match_token(&TokenType::When) {
+                let mut values = Vec::new();
+                loop {
+                    values.push(self.expression()?);
+                    if !self.match_token(&TokenType::Comma) {
+                        break;
+                    }
+                }
+                self.consume(&TokenType::FatArrow, "Expected '=>' after when values")?;
+                let body = Box::new(self.statement()?);
+                cases.push(WhenCase { values, body });
+            } else if self.match_token(&TokenType::Default) {
+                if default.is_some() {
+                    return Err(ParseError {
+                        message: "Multiple default cases in pick statement".to_string(),
+                        line: self.previous().line,
+                    });
+                }
+                self.consume(&TokenType::FatArrow, "Expected '=>' after 'default'")?;
+                default = Some(Box::new(self.statement()?));
+            } else {
+                return Err(ParseError {
+                    message: "Expected 'when' or 'default' inside pick statement".to_string(),
+                    line: self.peek().line,
+                });
+            }
+        }
+
+        self.consume(&TokenType::RightBrace, "Expected '}' after pick body")?;
+
+        Ok(Statement::Pick {
+            expression,
+            cases,
+            default,
+        })
     }
     
     fn expression_statement(&mut self) -> Result<Statement, ParseError> {

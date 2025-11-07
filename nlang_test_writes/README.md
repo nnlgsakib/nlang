@@ -87,6 +87,14 @@ Nlang is a Python-like programming language that compiles to machine code using 
 - Number manipulation utilities
 - Fibonacci sequence generation
 
+### 15. `15_pick_statement.nlang`
+**Pick (Match/Switch) Statement**
+- Demonstrates the new `pick` statement for pattern matching
+- Examples with integer, string, and boolean expressions
+- Usage of `when` clauses with single or multiple values
+- Implementation of a `default` case
+- Shows `pick` statements without a `default` case
+
 ## Language Features Demonstrated
 
 ### Keywords
@@ -98,6 +106,9 @@ Nlang is a Python-like programming language that compiles to machine code using 
 - `break/continue` - Loop control
 - `export` - Export functions for import
 - `assign_main` - Designate main function
+- `pick` - Match/switch statement
+- `when` - Case for `pick` statement
+- `default` - Default case for `pick` statement
 
 ### Data Types
 - **Integer**: Whole numbers (e.g., `42`, `-10`)
@@ -146,6 +157,7 @@ nlang generate-c 01_hello_world.nlang
 7. Learn type conversions with `08_type_conversions.nlang`
 8. Study the comprehensive `09_calculator.nlang` example
 9. Explore modular programming with `10_utility_library.nlang`
+10. Discover pattern matching with `15_pick_statement.nlang`
 
 ## Notes
 

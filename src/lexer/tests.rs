@@ -65,4 +65,14 @@ mod lexer_tests {
         assert_eq!(tokens[3].token_type, TokenType::I32Literal(42));
         assert_eq!(tokens[8].token_type, TokenType::I32Literal(-123));
     }
+
+    #[test]
+    fn test_pick_when_default() {
+        let source = "pick (x) { when 1: {} default: {} }";
+        let tokens = tokenize(source).unwrap();
+
+        assert_eq!(tokens[0].token_type, TokenType::Pick);
+        assert_eq!(tokens[5].token_type, TokenType::When);
+        assert_eq!(tokens[10].token_type, TokenType::Default);
+    }
 }
