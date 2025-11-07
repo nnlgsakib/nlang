@@ -419,7 +419,7 @@ impl SemanticAnalyzer {
                 let analyzed_then = Box::new(self.analyze_statement(*then_branch)?);
                 let analyzed_else = match else_branch {
                     Some(branch) => Some(Box::new(self.analyze_statement(*branch)?)),
-                    None => None,
+                    none => none,
                 };
                 
                 Ok(Statement::If {
