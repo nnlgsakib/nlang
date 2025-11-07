@@ -1,13 +1,8 @@
 // 15_pick_statement.nlang
 // This program demonstrates the new 'pick' (match/switch) statement feature.
 
-def main() {
-    println("=== Pick Statement Examples ===");
-
-    // Example 1: Integer pick statement
-    println("\n--- Integer Pick ---");
-    store day = 3;
-    print("Day: ");
+def picker(day:i32) {
+print("Day: ");
     println(day);
 
     pick day {
@@ -19,6 +14,17 @@ def main() {
         when 5 => println("It's Friday!");
         default => println("It's the weekend!");
     }
+}
+
+
+def main() {
+    println("=== Pick Statement Examples ===");
+
+    // Example 1: Integer pick statement
+    println("\n--- Integer Pick ---");
+    // store day = 3;
+    picker(3);
+    
 
     store another_day = 6;
     print("Another Day: ");
