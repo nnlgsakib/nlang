@@ -34,13 +34,13 @@ impl StdLib {
                 // I/O Functions
                 BuiltInFunction {
                     name: "print".to_string(),
-                    parameters: vec![Type::String],
+                    parameters: vec![],
                     return_type: Type::Void,
                     implementation: builtin_print,
                 },
                 BuiltInFunction {
                     name: "println".to_string(),
-                    parameters: vec![Type::String],
+                    parameters: vec![],
                     return_type: Type::Void,
                     implementation: builtin_println,
                 },
@@ -377,25 +377,29 @@ fn expr_to_string(expr: &Expr) -> Result<String, String> {
 
 // Built-in function implementations
 fn builtin_print(args: &[Expr]) -> Result<Expr, String> {
-    if args.len() != 1 {
-        return Err("print() takes exactly 1 argument".to_string());
+    let mut output = String::new();
+    for (i, arg) in args.iter().enumerate() {
+        if i > 0 {
+            output.push(' ');
+        }
+        output.push_str(&expr_to_string(arg)?);
     }
-    
-    let text = expr_to_string(&args[0])?;
-    print!("{}", text);
+    print!("{}", output);
     io::stdout().flush().map_err(|e| format!("IO error: {}", e))?;
-    
+
     Ok(Expr::Literal(Literal::Null))
 }
 
 fn builtin_println(args: &[Expr]) -> Result<Expr, String> {
-    if args.len() != 1 {
-        return Err("println() takes exactly 1 argument".to_string());
+    let mut output = String::new();
+    for (i, arg) in args.iter().enumerate() {
+        if i > 0 {
+            output.push(' ');
+        }
+        output.push_str(&expr_to_string(arg)?);
     }
-    
-    let text = expr_to_string(&args[0])?;
-    println!("{}", text);
-    
+    println!("{}", output);
+
     Ok(Expr::Literal(Literal::Null))
 }
 

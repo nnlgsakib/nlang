@@ -2,8 +2,8 @@
 // This program demonstrates the new 'pick' (match/switch) statement feature.
 
 def picker(day:i32) {
-print("Day: ");
-    println(day);
+
+    println("Day: ",day);
 
     pick day {
         when 1 => println("It's Monday!");

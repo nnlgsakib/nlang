@@ -571,14 +571,30 @@ fn emit_expr(&mut self, e: &Expr) -> Result<String, CCodeGenError> {
             // built-ins
             match fname.as_str() {
                 "print" | "println" => {
-                    if arguments.len() != 1 { return Err(CCodeGenError::Unsupported("print arity".into())); }
-                    let arg = &arguments[0];
-                    let arg_code = self.emit_expr(arg)?;
-                    let (fmt, val) = self.print_fmt(arg, &arg_code)?;
+                    if arguments.is_empty() {
+                        if fname == "println" {
+                            return Ok("printf(\"\\n\")".to_string());
+                        } else {
+                            return Ok("".to_string());
+                        }
+                    }
+
+                    let mut fmts = Vec::new();
+                    let mut vals = Vec::new();
+                    for arg in arguments {
+                        let arg_code = self.emit_expr(arg)?;
+                        let (fmt, val) = self.print_fmt(arg, &arg_code)?;
+                        fmts.push(fmt);
+                        vals.push(val);
+                    }
+
+                    let fmt_string = fmts.join(" ");
+                    let val_string = vals.join(", ");
+
                     let call = if fname == "println" {
-                        format!("printf(\"{fmt}\\n\", {val})")
+                        format!("printf(\"{}\\n\", {})", fmt_string, val_string)
                     } else {
-                        format!("printf(\"{fmt}\", {val})")
+                        format!("printf(\"{}\", {})", fmt_string, val_string)
                     };
                     return Ok(call);
                 }
@@ -795,68 +811,22 @@ fn infer_type(&self, e: &Expr) -> String {
 }
 fn print_fmt(&self, e: &Expr, code: &str) -> Result<(String, String), CCodeGenError> {
     Ok(match e {
-        Expr::Literal(Literal::Integer(_)) => ("%d".into(), code.into()),
-        Expr::Literal(Literal::Float(_)) => ("%f".into(), code.into()),
         Expr::Literal(Literal::Boolean(b)) => ("%s".into(), format!("\"{}\"", if *b { "true" } else { "false" })),
-        Expr::Literal(Literal::String(_)) => ("%s".into(), code.into()),
         Expr::Literal(Literal::Null) => ("%s".into(), "\"null\"".into()),
-        Expr::Variable(v) => {
-            let ty = self.vars.get(v).map(|s| s.as_str()).unwrap_or("int");
-            match ty {
-                "int" => ("%d".into(), code.into()),
-                "float" => ("%f".into(), code.into()),
-                "double" => ("%f".into(), code.into()),
-                "char*" => ("%s".into(), code.into()),
-                _ => ("%s".into(), code.into()),
-            }
-        }
-        Expr::Index { sequence, index: _ } => {
-            // For array indexing expressions, infer the type of the sequence
-            let ty = self.infer_type(sequence);
-            match ty.as_str() {
-                "int" => ("%d".into(), code.into()),
-                "float" => ("%f".into(), code.into()),
-                "double" => ("%f".into(), code.into()),
-                "char*" => ("%s".into(), code.into()),
-                _ => ("%s".into(), code.into()),
-            }
-        }
-        Expr::Binary { left: _, right: _, operator: _, .. } => {
-            // For binary expressions, infer the type of the expression
-            let ty = self.infer_type(e);
-            match ty.as_str() {
-                "int" => ("%d".into(), code.into()),
-                "int8_t" => ("%d".into(), code.into()),
-                "int16_t" => ("%d".into(), code.into()),
-                "int32_t" => ("%d".into(), code.into()),
-                "int64_t" => ("%ld".into(), code.into()),
-                "uint8_t" => ("%u".into(), code.into()),
-                "uint16_t" => ("%u".into(), code.into()),
-                "uint32_t" => ("%u".into(), code.into()),
-                "uint64_t" => ("%lu".into(), code.into()),
-                "float" => ("%f".into(), code.into()),
-                "double" => ("%f".into(), code.into()),
-                "char*" => ("%s".into(), code.into()),
-                _ => ("%d".into(), code.into()),
-            }
-        }
         _ => {
-            // For other expressions, infer the type and use appropriate format
             let ty = self.infer_type(e);
             match ty.as_str() {
                 "int" => ("%d".into(), code.into()),
-                "int8_t" => ("%d".into(), code.into()),
-                "int16_t" => ("%d".into(), code.into()),
-                "int32_t" => ("%d".into(), code.into()),
+                "int8_t" | "int16_t" | "int32_t" => ("%d".into(), code.into()),
                 "int64_t" => ("%ld".into(), code.into()),
-                "uint8_t" => ("%u".into(), code.into()),
-                "uint16_t" => ("%u".into(), code.into()),
-                "uint32_t" => ("%u".into(), code.into()),
+                "intptr_t" => ("%ld".into(), code.into()), // Approximation
+                "uint8_t" | "uint16_t" | "uint32_t" => ("%u".into(), code.into()),
                 "uint64_t" => ("%lu".into(), code.into()),
+                "size_t" => ("%zu".into(), code.into()),
                 "float" => ("%f".into(), code.into()),
                 "double" => ("%f".into(), code.into()),
-                "char*" => ("%s".into(), code.into()),
-                _ => ("%d".into(), code.into()),
+                "const char*" | "char*" => ("%s".into(), code.into()),
+                _ => ("%p".into(), code.into()), // Default to pointer for unknown types
             }
         }
     })

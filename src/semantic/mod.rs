@@ -743,77 +743,28 @@ impl SemanticAnalyzer {
                     analyzed_arguments.push(self.analyze_expr(arg)?);                                             
                 }                                                                                                 
                                                                                                                   
-                // Check function signature
+                if func_name == "print" || func_name == "println" {
+                    // These are variadic, so we don't check argument count or types.
+                } else if self.std_lib.is_builtin_function(&func_name) {
                     // Check if it's a built-in function first
-                    if self.std_lib.is_builtin_function(&func_name) {
-                        // Get argument types for overload resolution
-                        let mut arg_types = Vec::new();
-                        for arg in &analyzed_arguments {
-                            arg_types.push(self.infer_type(arg)?);
-                        }
-                        
-                        // Try to find function with matching signature
-                        if let Some(_builtin_func) = self.std_lib.get_builtin_function_by_signature(&func_name, &arg_types) {
-                            // Found exact match - no need for further type checking
-                        } else {
-                            // No exact match found - try the old method for backward compatibility
-                            if let Some(builtin_func) = self.std_lib.get_builtin_function(&func_name) {
-                                if analyzed_arguments.len() != builtin_func.parameters.len() {
-                                    return Err(SemanticError {
-                                        message: format!(
-                                            "Built-in function '{}' expects {} arguments, but {} were provided",
-                                            func_name,
-                                            builtin_func.parameters.len(),
-                                            analyzed_arguments.len()
-                                        ),
-                                    });
-                                }
+                    // Get argument types for overload resolution
+                    let mut arg_types = Vec::new();
+                    for arg in &analyzed_arguments {
+                        arg_types.push(self.infer_type(arg)?);
+                    }
 
-                                for (i, arg) in analyzed_arguments.iter().enumerate() {
-                                    let arg_type = self.infer_type(arg)?;
-                                    let param_type = &builtin_func.parameters[i];
-                                    
-                                    // Special case for println and print - they can accept any type
-                                    if func_name == "println" || func_name == "print" {
-                                        // Skip type checking for println and print - they handle conversion internally
-                                        continue;
-                                    }
-                                    
-                                    // Special handling for Void types - they might be function calls whose return types
-                                    // haven't been inferred yet. Allow them to pass type checking for now.
-                                    if arg_type == Type::Void {
-                                        // Skip type checking for Void arguments - they might be function calls
-                                        // whose return types will be inferred later during execution
-                                        continue;
-                                    }
-                                    
-                                    if arg_type != *param_type {
-                                        return Err(SemanticError {
-                                            message: format!(
-                                                "Type mismatch in argument {} of built-in function '{}': expected {:?}, got {:?}",
-                                                i + 1,
-                                                func_name,
-                                                param_type,
-                                                arg_type
-                                            ),
-                                        });
-                                    }
-                                }
-                            } else {
-                                return Err(SemanticError {
-                                    message: format!("No matching overload found for built-in function '{}'", func_name),
-                                });
-                            }
-                        }
+                    // Try to find function with matching signature
+                    if self.std_lib.get_builtin_function_by_signature(&func_name, &arg_types).is_some() {
+                        // Found exact match - no need for further type checking
                     } else {
-                        // Check user-defined functions
-                        if let Ok(Symbol::Function { parameters, .. }) = self.get_symbol(&func_name) {                     
-                            if analyzed_arguments.len() != parameters.len() {                                         
-                                return Err(SemanticError {                                                            
+                        // No exact match found - try the old method for backward compatibility
+                        if let Some(builtin_func) = self.std_lib.get_builtin_function(&func_name) {
+                            if analyzed_arguments.len() != builtin_func.parameters.len() {
+                                return Err(SemanticError {
                                     message: format!(
-                                        "Function '{}' expects {} arguments, but {} were provided",
+                                        "Built-in function '{}' expects {} arguments, but {} were provided",
                                         func_name,
-                                        parameters.len(),
+                                        builtin_func.parameters.len(),
                                         analyzed_arguments.len()
                                     ),
                                 });
@@ -821,11 +772,26 @@ impl SemanticAnalyzer {
 
                             for (i, arg) in analyzed_arguments.iter().enumerate() {
                                 let arg_type = self.infer_type(arg)?;
-                                let param_type = &parameters[i].param_type;
-                                if !self.are_types_compatible(&arg_type, param_type) {
+                                let param_type = &builtin_func.parameters[i];
+
+                                // Special case for println and print - they can accept any type
+                                if func_name == "println" || func_name == "print" {
+                                    // Skip type checking for println and print - they handle conversion internally
+                                    continue;
+                                }
+
+                                // Special handling for Void types - they might be function calls whose return types
+                                // haven't been inferred yet. Allow them to pass type checking for now.
+                                if arg_type == Type::Void {
+                                    // Skip type checking for Void arguments - they might be function calls
+                                    // whose return types will be inferred later during execution
+                                    continue;
+                                }
+
+                                if arg_type != *param_type {
                                     return Err(SemanticError {
                                         message: format!(
-                                            "Type mismatch in argument {} of function '{}': expected {:?}, got {:?}",
+                                            "Type mismatch in argument {} of built-in function '{}': expected {:?}, got {:?}",
                                             i + 1,
                                             func_name,
                                             param_type,
@@ -836,10 +802,45 @@ impl SemanticAnalyzer {
                             }
                         } else {
                             return Err(SemanticError {
-                                message: format!("Undefined function '{}'", func_name),
+                                message: format!("No matching overload found for built-in function '{}'", func_name),
                             });
                         }
                     }
+                } else {
+                    // Check user-defined functions
+                    if let Ok(Symbol::Function { parameters, .. }) = self.get_symbol(&func_name) {
+                        if analyzed_arguments.len() != parameters.len() {
+                            return Err(SemanticError {
+                                message: format!(
+                                    "Function '{}' expects {} arguments, but {} were provided",
+                                    func_name,
+                                    parameters.len(),
+                                    analyzed_arguments.len()
+                                ),
+                            });
+                        }
+
+                        for (i, arg) in analyzed_arguments.iter().enumerate() {
+                            let arg_type = self.infer_type(arg)?;
+                            let param_type = &parameters[i].param_type;
+                            if !self.are_types_compatible(&arg_type, param_type) {
+                                return Err(SemanticError {
+                                    message: format!(
+                                        "Type mismatch in argument {} of function '{}': expected {:?}, got {:?}",
+                                        i + 1,
+                                        func_name,
+                                        param_type,
+                                        arg_type
+                                    ),
+                                });
+                            }
+                        }
+                    } else {
+                        return Err(SemanticError {
+                            message: format!("Undefined function '{}'", func_name),
+                        });
+                    }
+                }
 
                 Ok(Expr::Call {
                     callee: Box::new(Expr::Variable(func_name)),

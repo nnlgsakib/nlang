@@ -567,38 +567,27 @@ impl Interpreter {
                 // Handle built-in functions
                 match func_name.as_str() {
                         "print" => {
-                            if arguments.len() != 1 {
-                                return Err(InterpreterError::InvalidOperation {
-                                    message: "print function requires 1 argument".to_string(),
-                                });
-                            }
-                            let arg = self.evaluate_expression(&arguments[0], env)?;
-                            match arg {
-                                Value::String(s) => print!("{}", s),
-                                Value::Integer(i) => print!("{}", i),
-                                Value::Float(f) => print!("{}", f),
-                                Value::Boolean(b) => print!("{}", b),
-                                Value::Array(arr) => print!("[{}]", arr.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", ")),
+                            for (i, arg_expr) in arguments.iter().enumerate() {
+                                if i > 0 {
+                                    print!(" ");
+                                }
+                                let arg = self.evaluate_expression(arg_expr, env)?;
+                                print!("{}", arg);
                             }
                             use std::io::{self, Write};
                             io::stdout().flush().unwrap();
-                            Ok(Value::Integer(0)) // Return null/void equivalent
+                            Ok(Value::Integer(0))
                         }
                         "println" => {
-                            if arguments.len() != 1 {
-                                return Err(InterpreterError::InvalidOperation {
-                                    message: "println function requires 1 argument".to_string(),
-                                });
+                            for (i, arg_expr) in arguments.iter().enumerate() {
+                                if i > 0 {
+                                    print!(" ");
+                                }
+                                let arg = self.evaluate_expression(arg_expr, env)?;
+                                print!("{}", arg);
                             }
-                            let arg = self.evaluate_expression(&arguments[0], env)?;
-                            match arg {
-                                Value::String(s) => println!("{}", s),
-                                Value::Integer(i) => println!("{}", i),
-                                Value::Float(f) => println!("{}", f),
-                                Value::Boolean(b) => println!("{}", b),
-                                Value::Array(arr) => println!("[{}]", arr.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", ")),
-                            }
-                            Ok(Value::Integer(0)) // Return null/void equivalent
+                            println!();
+                            Ok(Value::Integer(0))
                         }
                         "add" => {
                             if arguments.len() != 2 {
