@@ -22,7 +22,7 @@ Nlang is a statically-typed, compiled programming language that combines Python-
 ### Build from Source
 ```bash
 # Clone the repository
-git clone https://github.com/nnlgsakib/nlang-rs.git
+git clone https://github.com/nnlgsakib/nlang.git
 cd nlang-rs
 
 # Build the compiler
