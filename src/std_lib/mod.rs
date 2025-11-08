@@ -56,7 +56,13 @@ impl StdLib {
                     name: "len".to_string(),
                     parameters: vec![Type::String],
                     return_type: Type::Integer,
-                    implementation: builtin_len,
+                    implementation: builtin_len_string,
+                },
+                BuiltInFunction {
+                    name: "len".to_string(),
+                    parameters: vec![Type::Array(Box::new(Type::Void), 0)], // Placeholder for any array
+                    return_type: Type::Integer,
+                    implementation: builtin_len_array,
                 },
                 
                 // Type Conversion Functions
@@ -371,35 +377,107 @@ fn expr_to_string(expr: &Expr) -> Result<String, String> {
         Expr::Literal(Literal::Float(f)) => Ok(f.to_string()),
         Expr::Literal(Literal::Boolean(b)) => Ok(b.to_string()),
         Expr::Literal(Literal::Null) => Ok("null".to_string()),
-        _ => Err("Cannot convert expression to string".to_string()),
+        Expr::ArrayLiteral { elements } => {
+            let mut parts = Vec::new();
+            for element in elements {
+                parts.push(expr_to_string(element)?);
+            }
+            Ok(format!("[{}]", parts.join(", ")))
+        }
+        _ => Err(format!("Cannot convert expression to string: {:?}", expr)),
     }
 }
 
 // Built-in function implementations
 fn builtin_print(args: &[Expr]) -> Result<Expr, String> {
-    let mut output = String::new();
-    for (i, arg) in args.iter().enumerate() {
-        if i > 0 {
-            output.push(' ');
+    if !args.is_empty() {
+        if let Expr::Literal(Literal::String(format_str)) = &args[0] {
+            if args.len() > 1 && format_str.contains("[]") {
+                // Placeholder logic
+                let parts: Vec<&str> = format_str.split("[]").collect();
+                let mut arg_idx = 1;
+                for (i, part) in parts.iter().enumerate() {
+                    print!("{}", part);
+                    if i < parts.len() - 1 {
+                        if arg_idx < args.len() {
+                            print!("{}", expr_to_string(&args[arg_idx])?);
+                            arg_idx += 1;
+                        } else {
+                            print!("[]");
+                        }
+                    }
+                }
+                // Print remaining arguments if any
+                while arg_idx < args.len() {
+                    print!(" {}", expr_to_string(&args[arg_idx])?);
+                    arg_idx += 1;
+                }
+            } else {
+                // Old logic: print all args space-separated
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 {
+                        print!(" ");
+                    }
+                    print!("{}", expr_to_string(arg)?);
+                }
+            }
+        } else {
+            // First arg not a string, print all args space-separated
+            for (i, arg) in args.iter().enumerate() {
+                if i > 0 {
+                    print!(" ");
+                }
+                print!("{}", expr_to_string(arg)?);
+            }
         }
-        output.push_str(&expr_to_string(arg)?);
     }
-    print!("{}", output);
     io::stdout().flush().map_err(|e| format!("IO error: {}", e))?;
-
     Ok(Expr::Literal(Literal::Null))
 }
 
 fn builtin_println(args: &[Expr]) -> Result<Expr, String> {
-    let mut output = String::new();
-    for (i, arg) in args.iter().enumerate() {
-        if i > 0 {
-            output.push(' ');
+    if !args.is_empty() {
+        if let Expr::Literal(Literal::String(format_str)) = &args[0] {
+            if args.len() > 1 && format_str.contains("[]") {
+                // Placeholder logic
+                let parts: Vec<&str> = format_str.split("[]").collect();
+                let mut arg_idx = 1;
+                for (i, part) in parts.iter().enumerate() {
+                    print!("{}", part);
+                    if i < parts.len() - 1 {
+                        if arg_idx < args.len() {
+                            print!("{}", expr_to_string(&args[arg_idx])?);
+                            arg_idx += 1;
+                        } else {
+                            print!("[]");
+                        }
+                    }
+                }
+                // Print remaining arguments if any
+                while arg_idx < args.len() {
+                    print!(" {}", expr_to_string(&args[arg_idx])?);
+                    arg_idx += 1;
+                }
+            } else {
+                // Old logic: print all args space-separated
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 {
+                        print!(" ");
+                    }
+                    print!("{}", expr_to_string(arg)?);
+                }
+            }
+        } else {
+            // First arg not a string, print all args space-separated
+            for (i, arg) in args.iter().enumerate() {
+                if i > 0 {
+                    print!(" ");
+                }
+                print!("{}", expr_to_string(arg)?);
+            }
         }
-        output.push_str(&expr_to_string(arg)?);
     }
-    println!("{}", output);
-
+    println!();
     Ok(Expr::Literal(Literal::Null))
 }
 
@@ -419,13 +497,26 @@ fn builtin_input(_args: &[Expr]) -> Result<Expr, String> {
     Ok(Expr::Literal(Literal::String(input)))
 }
 
-fn builtin_len(args: &[Expr]) -> Result<Expr, String> {
+fn builtin_len_string(args: &[Expr]) -> Result<Expr, String> {
     if args.len() != 1 {
         return Err("len() takes exactly 1 argument".to_string());
     }
     
-    let text = extract_string_value(&args[0])?;
-    Ok(Expr::Literal(Literal::Integer(text.len() as i64)))
+    match &args[0] {
+        Expr::Literal(Literal::String(s)) => Ok(Expr::Literal(Literal::Integer(s.len() as i64))),
+        _ => Err("len() argument must be a string".to_string()),
+    }
+}
+
+fn builtin_len_array(args: &[Expr]) -> Result<Expr, String> {
+    if args.len() != 1 {
+        return Err("len() takes exactly 1 argument".to_string());
+    }
+
+    match &args[0] {
+        Expr::ArrayLiteral { elements } => Ok(Expr::Literal(Literal::Integer(elements.len() as i64))),
+        _ => Err("len() argument must be an array".to_string()),
+    }
 }
 
 fn builtin_int(args: &[Expr]) -> Result<Expr, String> {

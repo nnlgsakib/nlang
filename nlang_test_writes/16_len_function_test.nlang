@@ -1,0 +1,35 @@
+// 16_len_function_test.nlang
+// This program demonstrates the use of the len() function on strings and arrays.
+
+def main() {
+    println("=== len() Function Test ===");
+
+    // Test len() on a string
+    store my_string = "Hello, nlang!";
+    store string_length = len(my_string);
+    print("The length of the string '");
+    println("[] is []", my_string , string_length);
+ //   print(my_string);
+ //   print("' is: ");
+ //   println(string_length);
+
+    // Test len() on an empty string
+    store empty_string = "";
+    store empty_length = len(empty_string);
+    print("The length of an empty string is: ");
+    println(empty_length);
+
+    // Test len() on an array
+    store my_array = [10, 20, 30, 40, 50];
+    store array_length = len(my_array);
+    print("The length of the array [10, 20, 30, 40, 50] is: ");
+    println(array_length);
+    
+    // Test len() on a multi-dimensional array
+    store matrix = [[1, 2], [3, 4]];
+    store matrix_length = len(matrix);
+    print("The length of the 2D array [[1, 2], [3, 4]] is: ");
+    println(matrix_length);
+
+    println("\n=== len() Test Completed Successfully ===");
+}

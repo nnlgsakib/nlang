@@ -567,27 +567,120 @@ impl Interpreter {
                 // Handle built-in functions
                 match func_name.as_str() {
                         "print" => {
-                            for (i, arg_expr) in arguments.iter().enumerate() {
-                                if i > 0 {
-                                    print!(" ");
+                            let mut evaluated_args = Vec::new();
+                            for arg_expr in arguments {
+                                evaluated_args.push(self.evaluate_expression(arg_expr, env)?);
+                            }
+
+                            if !evaluated_args.is_empty() {
+                                if let Value::String(format_str) = &evaluated_args[0] {
+                                    if arguments.len() > 1 && format_str.contains("[]") {
+                                        // Placeholder logic
+                                        let parts: Vec<&str> = format_str.split("[]").collect();
+                                        let mut arg_idx = 1;
+                                        for (i, part) in parts.iter().enumerate() {
+                                            print!("{}", part);
+                                            if i < parts.len() - 1 {
+                                                if arg_idx < evaluated_args.len() {
+                                                    print!("{}", evaluated_args[arg_idx]);
+                                                    arg_idx += 1;
+                                                } else {
+                                                    print!("[]");
+                                                }
+                                            }
+                                        }
+                                        // Print remaining arguments if any
+                                        while arg_idx < evaluated_args.len() {
+                                            print!(" {}", evaluated_args[arg_idx]);
+                                            arg_idx += 1;
+                                        }
+                                    } else {
+                                        // Old logic: print all args space-separated
+                                        for (i, arg) in evaluated_args.iter().enumerate() {
+                                            if i > 0 {
+                                                print!(" ");
+                                            }
+                                            print!("{}", arg);
+                                        }
+                                    }
+                                } else {
+                                    // First arg not a string, print all args space-separated
+                                    for (i, arg) in evaluated_args.iter().enumerate() {
+                                        if i > 0 {
+                                            print!(" ");
+                                        }
+                                        print!("{}", arg);
+                                    }
                                 }
-                                let arg = self.evaluate_expression(arg_expr, env)?;
-                                print!("{}", arg);
                             }
                             use std::io::{self, Write};
                             io::stdout().flush().unwrap();
                             Ok(Value::Integer(0))
                         }
                         "println" => {
-                            for (i, arg_expr) in arguments.iter().enumerate() {
-                                if i > 0 {
-                                    print!(" ");
+                            let mut evaluated_args = Vec::new();
+                            for arg_expr in arguments {
+                                evaluated_args.push(self.evaluate_expression(arg_expr, env)?);
+                            }
+
+                            if !evaluated_args.is_empty() {
+                                if let Value::String(format_str) = &evaluated_args[0] {
+                                    if arguments.len() > 1 && format_str.contains("[]") {
+                                        // Placeholder logic
+                                        let parts: Vec<&str> = format_str.split("[]").collect();
+                                        let mut arg_idx = 1;
+                                        for (i, part) in parts.iter().enumerate() {
+                                            print!("{}", part);
+                                            if i < parts.len() - 1 {
+                                                if arg_idx < evaluated_args.len() {
+                                                    print!("{}", evaluated_args[arg_idx]);
+                                                    arg_idx += 1;
+                                                } else {
+                                                    print!("[]");
+                                                }
+                                            }
+                                        }
+                                        // Print remaining arguments if any
+                                        while arg_idx < evaluated_args.len() {
+                                            print!(" {}", evaluated_args[arg_idx]);
+                                            arg_idx += 1;
+                                        }
+                                    } else {
+                                        // Old logic: print all args space-separated
+                                        for (i, arg) in evaluated_args.iter().enumerate() {
+                                            if i > 0 {
+                                                print!(" ");
+                                            }
+                                            print!("{}", arg);
+                                        }
+                                    }
+                                } else {
+                                    // First arg not a string, print all args space-separated
+                                    for (i, arg) in evaluated_args.iter().enumerate() {
+                                        if i > 0 {
+                                            print!(" ");
+                                        }
+                                        print!("{}", arg);
+                                    }
                                 }
-                                let arg = self.evaluate_expression(arg_expr, env)?;
-                                print!("{}", arg);
                             }
                             println!();
                             Ok(Value::Integer(0))
+                        }
+                        "len" => {
+                            if arguments.len() != 1 {
+                                return Err(InterpreterError::InvalidOperation {
+                                    message: "len function requires 1 argument".to_string(),
+                                });
+                            }
+                            let arg = self.evaluate_expression(&arguments[0], env)?;
+                            match arg {
+                                Value::String(s) => Ok(Value::Integer(s.len() as i64)),
+                                Value::Array(a) => Ok(Value::Integer(a.len() as i64)),
+                                _ => Err(InterpreterError::InvalidOperation {
+                                    message: "len function can only be used on strings and arrays".to_string(),
+                                }),
+                            }
                         }
                         "add" => {
                             if arguments.len() != 2 {

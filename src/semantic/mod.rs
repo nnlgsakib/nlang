@@ -745,6 +745,23 @@ impl SemanticAnalyzer {
                                                                                                                   
                 if func_name == "print" || func_name == "println" {
                     // These are variadic, so we don't check argument count or types.
+                } else if func_name == "len" {
+                    if analyzed_arguments.len() != 1 {
+                        return Err(SemanticError {
+                            message: "len() function expects exactly one argument".to_string(),
+                        });
+                    }
+                    let arg_type = self.infer_type(&analyzed_arguments[0])?;
+                    match arg_type {
+                        Type::String | Type::Array(_, _) => {
+                            // This is valid
+                        }
+                        _ => {
+                            return Err(SemanticError {
+                                message: format!("len() function cannot be called on type {:?}", arg_type),
+                            });
+                        }
+                    }
                 } else if self.std_lib.is_builtin_function(&func_name) {
                     // Check if it's a built-in function first
                     // Get argument types for overload resolution
@@ -1236,6 +1253,9 @@ impl SemanticAnalyzer {
                 // For function calls, we need to look up the return type in the symbol table
                 match callee.as_ref() {
                     Expr::Variable(func_name) => {
+                        if func_name == "len" {
+                            return Ok(Type::Integer);
+                        }
                         // Check built-in functions first
                         if self.std_lib.is_builtin_function(func_name) {
                             // For type inference, we need to analyze the arguments first to get their types

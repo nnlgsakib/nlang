@@ -579,6 +579,60 @@ fn emit_expr(&mut self, e: &Expr) -> Result<String, CCodeGenError> {
                         }
                     }
 
+                    // Check for placeholder logic
+                    if let Expr::Literal(Literal::String(format_str)) = &arguments[0] {
+                        if arguments.len() > 1 && format_str.contains("[]") {
+                            let mut final_fmt = String::new();
+                            let mut vals = Vec::new();
+                            let parts: Vec<&str> = format_str.split("[]").collect();
+                            let mut arg_idx = 1;
+
+                            for (i, part) in parts.iter().enumerate() {
+                                final_fmt.push_str(&part.replace('%', "%%"));
+                                if i < parts.len() - 1 {
+                                    if arg_idx < arguments.len() {
+                                        let arg = &arguments[arg_idx];
+                                        let arg_code = self.emit_expr(arg)?;
+                                        let (fmt, val) = self.print_fmt(arg, &arg_code)?;
+                                        final_fmt.push_str(&fmt);
+                                        vals.push(val);
+                                        arg_idx += 1;
+                                    } else {
+                                        final_fmt.push_str("[]");
+                                    }
+                                }
+                            }
+                            
+                            // Handle remaining arguments
+                            while arg_idx < arguments.len() {
+                                let arg = &arguments[arg_idx];
+                                let arg_code = self.emit_expr(arg)?;
+                                let (fmt, val) = self.print_fmt(arg, &arg_code)?;
+                                final_fmt.push_str(" ");
+                                final_fmt.push_str(&fmt);
+                                vals.push(val);
+                                arg_idx += 1;
+                            }
+
+                            let val_string = vals.join(", ");
+                            let call = if fname == "println" {
+                                if vals.is_empty() {
+                                    format!("printf(\"{}\\n\")", final_fmt)
+                                } else {
+                                    format!("printf(\"{}\\n\", {})", final_fmt, val_string)
+                                }
+                            } else {
+                                if vals.is_empty() {
+                                    format!("printf(\"{}\")", final_fmt)
+                                } else {
+                                    format!("printf(\"{}\", {})", final_fmt, val_string)
+                                }
+                            };
+                            return Ok(call);
+                        }
+                    }
+
+                    // Fallback to old logic
                     let mut fmts = Vec::new();
                     let mut vals = Vec::new();
                     for arg in arguments {
@@ -592,9 +646,17 @@ fn emit_expr(&mut self, e: &Expr) -> Result<String, CCodeGenError> {
                     let val_string = vals.join(", ");
 
                     let call = if fname == "println" {
-                        format!("printf(\"{}\\n\", {})", fmt_string, val_string)
+                        if val_string.is_empty() {
+                            format!("printf(\"{}\\n\")", fmt_string)
+                        } else {
+                            format!("printf(\"{}\\n\", {})", fmt_string, val_string)
+                        }
                     } else {
-                        format!("printf(\"{}\", {})", fmt_string, val_string)
+                        if val_string.is_empty() {
+                            format!("printf(\"{}\")", fmt_string)
+                        } else {
+                            format!("printf(\"{}\", {})", fmt_string, val_string)
+                        }
                     };
                     return Ok(call);
                 }
@@ -617,6 +679,21 @@ fn emit_expr(&mut self, e: &Expr) -> Result<String, CCodeGenError> {
                 }
                 "abs" => return Ok(format!("abs({})", self.emit_expr(&arguments[0])?)),
                 "abs_float" => return Ok(format!("fabs({})", self.emit_expr(&arguments[0])?)),
+                "len" => {
+                    if arguments.len() != 1 {
+                        return Err(CCodeGenError::Unsupported("len() expects 1 argument".into()));
+                    }
+                    let arg_expr = &arguments[0];
+                    let arg_code = self.emit_expr(arg_expr)?;
+                    let arg_type = self.infer_type(arg_expr);
+
+                    if arg_type == "const char*" || arg_type == "char*" {
+                        return Ok(format!("strlen({})", arg_code));
+                    } else {
+                        // Assume it's an array. This works for stack-allocated C arrays.
+                        return Ok(format!("(sizeof({}) / sizeof({}[0]))", arg_code, arg_code));
+                    }
+                }
                 _ => {}
             }
             let args: Vec<_> = arguments.iter().map(|a| self.emit_expr(a)).collect::<Result<_, _>>()?;
