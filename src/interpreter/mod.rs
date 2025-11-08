@@ -682,6 +682,36 @@ impl Interpreter {
                                 }),
                             }
                         }
+                        "input" => {
+                            if arguments.len() > 1 {
+                                return Err(InterpreterError::InvalidOperation {
+                                    message: "input function takes 0 or 1 arguments".to_string(),
+                                });
+                            }
+                            if arguments.len() == 1 {
+                                let prompt = self.evaluate_expression(&arguments[0], env)?;
+                                print!("{}", prompt);
+                                use std::io::{self, Write};
+                                io::stdout().flush().unwrap();
+                            }
+                            
+                            let mut input = String::new();
+                            match std::io::stdin().read_line(&mut input) {
+                                Ok(_) => {
+                                    // Remove trailing newline
+                                    if input.ends_with('\n') {
+                                        input.pop();
+                                        if input.ends_with('\r') {
+                                            input.pop();
+                                        }
+                                    }
+                                    Ok(Value::String(input))
+                                }
+                                Err(e) => Err(InterpreterError::InvalidOperation {
+                                    message: format!("Failed to read line from stdin: {}", e),
+                                }),
+                            }
+                        }
                         "add" => {
                             if arguments.len() != 2 {
                                 return Err(InterpreterError::InvalidOperation {

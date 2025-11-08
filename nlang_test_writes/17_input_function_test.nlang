@@ -1,0 +1,27 @@
+// 17_input_function_test.nlang
+// This program demonstrates the use of the input() function.
+// This is an interactive test. Please enter input when prompted.
+
+def main() {
+    println("=== input() Function Test ===");
+
+    // Test input() with a prompt
+    println("Please enter your name:");
+    store name = input("Name: ");
+    println("Hello, []!", name);
+
+    // Test input() without a prompt
+    println("\nPlease enter your age:");
+    store age_str = input();
+    store age = int(age_str);
+    println("You are [] years old.", age);
+
+    // Test input for a number and perform a calculation
+    println("\nEnter a number to double:");
+    store num_str = input("Number: ");
+    store num = int(num_str);
+    store doubled = num * 2;
+    println("[] doubled is [].", num, doubled);
+
+    println("\n=== input() Test Completed Successfully ===");
+}

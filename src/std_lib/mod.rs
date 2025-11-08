@@ -50,6 +50,12 @@ impl StdLib {
                     return_type: Type::String,
                     implementation: builtin_input,
                 },
+                BuiltInFunction {
+                    name: "input".to_string(),
+                    parameters: vec![Type::String],
+                    return_type: Type::String,
+                    implementation: builtin_input,
+                },
                 
                 // String Functions
                 BuiltInFunction {
@@ -481,7 +487,16 @@ fn builtin_println(args: &[Expr]) -> Result<Expr, String> {
     Ok(Expr::Literal(Literal::Null))
 }
 
-fn builtin_input(_args: &[Expr]) -> Result<Expr, String> {
+fn builtin_input(args: &[Expr]) -> Result<Expr, String> {
+    if args.len() > 1 {
+        return Err("input() takes 0 or 1 arguments".to_string());
+    }
+
+    if let Some(prompt_expr) = args.get(0) {
+        print!("{}", expr_to_string(prompt_expr)?);
+        io::stdout().flush().map_err(|e| format!("IO error: {}", e))?;
+    }
+
     let mut input = String::new();
     io::stdin().read_line(&mut input)
         .map_err(|e| format!("IO error: {}", e))?;

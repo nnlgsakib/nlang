@@ -58,6 +58,51 @@ impl CCodeGenerator {
     generator.pop();
     generator.line("}");
     generator.empty();
+
+    generator.line("char* read_line(const char* prompt) {");
+    generator.push();
+    generator.line("if (prompt) {");
+    generator.push();
+    generator.line("printf(\"%s\", prompt);");
+    generator.line("fflush(stdout);");
+    generator.pop();
+    generator.line("}");
+    generator.empty();
+    generator.line("size_t buffer_size = 128;");
+    generator.line("char* buffer = malloc(buffer_size);");
+    generator.line("if (!buffer) return NULL;");
+    generator.empty();
+    generator.line("int c;");
+    generator.line("size_t position = 0;");
+    generator.line("while (1) {");
+    generator.push();
+    generator.line("c = getchar();");
+    generator.line("if (c == EOF || c == '\\n') {");
+    generator.push();
+    generator.line("buffer[position] = '\\0';");
+    generator.line("return buffer;");
+    generator.pop();
+    generator.line("} else {");
+    generator.push();
+    generator.line("buffer[position] = c;");
+    generator.pop();
+    generator.line("}");
+    generator.line("position++;");
+    generator.empty();
+    generator.line("if (position >= buffer_size) {");
+    generator.push();
+    generator.line("buffer_size += 128;");
+    generator.line("char* new_buffer = realloc(buffer, buffer_size);");
+    generator.line("if (!new_buffer) { free(buffer); return NULL; }");
+    generator.line("buffer = new_buffer;");
+    generator.pop();
+    generator.line("}");
+    generator.pop();
+    generator.line("}");
+    generator.pop();
+    generator.line("}");
+    generator.empty();
+    
     generator
 }
 // --------------------------------------------------------------------- //
@@ -662,19 +707,23 @@ fn emit_expr(&mut self, e: &Expr) -> Result<String, CCodeGenError> {
                 }
                 "str" => return Ok(format!("int_to_str({})", self.emit_expr(&arguments[0])?)),
                 "int" => {
-                    let a = self.emit_expr(&arguments[0])?;
-                    if a.contains("int_to_str") || a.contains("float_to_str") {
-                        return Ok(format!("atoi({a})"));
+                    let arg_expr = &arguments[0];
+                    let arg_code = self.emit_expr(arg_expr)?;
+                    let arg_type = self.infer_type(arg_expr);
+                    if arg_type == "char*" || arg_type == "const char*" {
+                        return Ok(format!("atoi({})", arg_code));
                     } else {
-                        return Ok(format!("((int){a})"));
+                        return Ok(format!("((int){})", arg_code));
                     }
                 }
                 "float" => {
-                    let a = self.emit_expr(&arguments[0])?;
-                    if a.contains("int_to_str") || a.contains("float_to_str") {
-                        return Ok(format!("atof({a})"));
+                    let arg_expr = &arguments[0];
+                    let arg_code = self.emit_expr(arg_expr)?;
+                    let arg_type = self.infer_type(arg_expr);
+                    if arg_type == "char*" || arg_type == "const char*" {
+                        return Ok(format!("atof({})", arg_code));
                     } else {
-                        return Ok(format!("((double){a})"));
+                        return Ok(format!("((double){})", arg_code));
                     }
                 }
                 "abs" => return Ok(format!("abs({})", self.emit_expr(&arguments[0])?)),
@@ -692,6 +741,16 @@ fn emit_expr(&mut self, e: &Expr) -> Result<String, CCodeGenError> {
                     } else {
                         // Assume it's an array. This works for stack-allocated C arrays.
                         return Ok(format!("(sizeof({}) / sizeof({}[0]))", arg_code, arg_code));
+                    }
+                }
+                "input" => {
+                    if arguments.is_empty() {
+                        return Ok("read_line(NULL)".to_string());
+                    } else if arguments.len() == 1 {
+                        let arg_code = self.emit_expr(&arguments[0])?;
+                        return Ok(format!("read_line({})", arg_code));
+                    } else {
+                        return Err(CCodeGenError::Unsupported("input() takes 0 or 1 arguments".into()));
                     }
                 }
                 _ => {}
@@ -843,6 +902,7 @@ fn infer_type(&self, e: &Expr) -> String {
                 // Check if this is a built-in function with known return type
                 match func_name.as_str() {
                     "str" => "char*".into(),
+                    "input" => "char*".into(),
                     "int" => "int".into(),
                     "float" => "double".into(),
                     "abs" => "int".into(),
