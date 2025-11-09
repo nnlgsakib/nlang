@@ -903,15 +903,48 @@ impl Interpreter {
                         arr[idx as usize] = value_val.clone();
                         
                         // Update the array in the environment
-                        // For now, we assume the array is stored in a variable
-                        // This is a limitation - we need to handle the case where the sequence
-                        // is a complex expression that evaluates to an array
-                        if let Expr::Variable(var_name) = sequence.as_ref() {
-                            env.set_variable(var_name.clone(), Value::Array(arr))?;
-                        } else {
-                            return Err(InterpreterError::InvalidOperation {
-                                message: "Complex array assignment not yet supported".to_string(),
-                            });
+                        // Handle the sequence based on its type to support more complex assignments
+                        match sequence.as_ref() {
+                            Expr::Variable(var_name) => {
+                                // Simple case: arr[index] = value
+                                env.set_variable(var_name.clone(), Value::Array(arr))?;
+                            }
+                            Expr::Index { sequence: inner_sequence, index: inner_index } => {
+                                // Handle nested case: arr[expr1][expr2] = value
+                                // First evaluate the inner array
+                                let container_val = self.evaluate_expression(inner_sequence, env)?;
+                                let idx_val = self.evaluate_expression(inner_index, env)?;
+                                
+                                if let (Value::Array(mut container_arr), Value::Integer(container_idx)) = (container_val, idx_val) {
+                                    if container_idx < 0 || container_idx >= container_arr.len() as i64 {
+                                        return Err(InterpreterError::IndexOutOfBounds {
+                                            index: container_idx,
+                                            length: container_arr.len(),
+                                        });
+                                    }
+                                    
+                                    // Replace the target array at the container index
+                                    container_arr[container_idx as usize] = Value::Array(arr);
+                                    
+                                    // Update the container array in the environment
+                                    if let Expr::Variable(container_var_name) = inner_sequence.as_ref() {
+                                        env.set_variable(container_var_name.clone(), Value::Array(container_arr))?;
+                                    } else {
+                                        return Err(InterpreterError::InvalidOperation {
+                                            message: "Complex nested array assignment not yet supported".to_string(),
+                                        });
+                                    }
+                                } else {
+                                    return Err(InterpreterError::InvalidOperation {
+                                        message: "Container must be an array with integer index".to_string(),
+                                    });
+                                }
+                            }
+                            _ => {
+                                return Err(InterpreterError::InvalidOperation {
+                                    message: "Complex array assignment not yet supported".to_string(),
+                                });
+                            }
                         }
                         
                         Ok(value_val)

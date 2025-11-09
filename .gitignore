@@ -3,5 +3,5 @@
 *.ll
 nlang-syntax/
 mlc/
-# web/
-# web-b/
+web/
+web-b/
