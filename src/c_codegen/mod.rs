@@ -189,6 +189,9 @@ fn collect_strings(&mut self, prog: &Program) {
                 walk(generator, body);
                 walk_expr(generator, condition);
             }
+            Statement::Loop { body } => {
+                walk(generator, body);
+            }
             _ => {}
         }
     }
@@ -469,6 +472,11 @@ fn emit_stmt(&mut self, stmt: &Statement) -> Result<(), CCodeGenError> {
             self.block(|generator| { generator.emit_stmt(body).unwrap(); });
             let cond = self.emit_expr(condition)?;
             self.line(&format!("while (!({cond}));"));
+        }
+        Statement::Loop { body } => {
+            // Infinite loop (like Rust's loop keyword)
+            self.line("while (1) ");
+            self.block(|generator| { generator.emit_stmt(body).unwrap(); });
         }
         Statement::For { initializer, condition, increment, body } => {
             self.write("for (");

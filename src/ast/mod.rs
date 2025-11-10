@@ -64,6 +64,9 @@ pub enum Statement {
         body: Box<Statement>,
         condition: Box<Expr>,
     },
+    Loop {
+        body: Box<Statement>,
+    },
 }
 
 #[derive(Debug, Clone, serde::Serialize)]

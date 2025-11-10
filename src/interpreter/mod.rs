@@ -421,6 +421,17 @@ impl Interpreter {
                 }
                 Ok(())
             }
+            Statement::Loop { body } => {
+                loop {
+                    match self.execute_statement(body, env) {
+                        Ok(()) => {},
+                        Err(InterpreterError::Break) => break,
+                        Err(InterpreterError::Continue) => continue,
+                        Err(other) => return Err(other),
+                    }
+                }
+                Ok(())
+            }
             Statement::For { initializer, condition, increment, body } => {
                 let mut declared_var_name: Option<String> = None;
 

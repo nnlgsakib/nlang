@@ -472,6 +472,10 @@ impl<'a> Parser<'a> {
         if self.match_token(&TokenType::Repeat) {
             return self.repeat_until_statement();
         }
+
+        if self.match_token(&TokenType::Loop) {
+            return self.loop_statement();
+        }
         
         self.expression_statement()
     }
@@ -663,6 +667,16 @@ impl<'a> Parser<'a> {
         self.consume(&TokenType::Semicolon, "Expected ';' after until condition")?;
         
         Ok(Statement::RepeatUntil { body, condition })
+    }
+
+    fn loop_statement(&mut self) -> Result<Statement, ParseError> {
+        // Parse the body (block statement)
+        let body = Box::new(self.statement()?);
+        
+        // Expect semicolon after the loop body
+        self.consume(&TokenType::Semicolon, "Expected ';' after loop body")?;
+        
+        Ok(Statement::Loop { body })
     }
     
     fn expression_statement(&mut self) -> Result<Statement, ParseError> {

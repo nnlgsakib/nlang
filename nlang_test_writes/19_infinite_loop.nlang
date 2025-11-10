@@ -1,0 +1,203 @@
+def main() {
+    println("=== Basic Infinite Loop with Break ===");
+    store counter = 0;
+    
+    // Basic infinite loop with break condition
+    loop {
+        counter = counter + 1;
+        println("Counter: ", counter);
+        
+        if (counter >= 5) {
+            break;
+        }
+    };
+    
+    println("Basic loop completed!");
+    
+    println("\n=== Nested Loops ===");
+    store outer = 0;
+    store inner = 0;
+    
+    // Nested loops
+    loop {
+        outer = outer + 1;
+        println("Outer: ", outer);
+        
+        // Nested loop
+        loop {
+            inner = inner + 1;
+            println("  Inner: ", inner);
+            
+            if (inner >= 3) {
+                break; // Break inner loop
+            }
+        };
+        
+        inner = 0; // Reset inner counter
+        
+        if (outer >= 2) {
+            break; // Break outer loop
+        }
+    };
+    
+    println("Nested loops completed!");
+    
+    println("\n=== Loop with Continue ===");
+    store odd_counter = 0;
+    
+    // Loop with continue statement
+    loop {
+        odd_counter = odd_counter + 1;
+        
+        if (odd_counter % 2 == 0) {
+            continue; // Skip even numbers
+        }
+        
+        println("Odd counter: ", odd_counter);
+        
+        if (odd_counter >= 5) {
+            break;
+        }
+    };
+    
+    println("Loop with continue completed!");
+    
+    println("\n=== Loop Inside Function ===");
+    // Call function with loop
+    store result = process_with_loop(10);
+    println("Result from function with loop: ", result);
+    
+    println("\n=== Recursive Function with Loop ===");
+    // Call recursive function
+    recursive_loop_example(3);
+    
+    println("\n=== Loop with Function Calls ===");
+    // Loop that calls functions
+    store func_counter = 0;
+    loop {
+        func_counter = func_counter + 1;
+        
+        if (func_counter % 2 == 0) {
+            store squared = square_number(func_counter);
+            println("Even number ", func_counter, " squared: ", squared);
+        } else {
+            store cubed = cube_number(func_counter);
+            println("Odd number ", func_counter, " cubed: ", cubed);
+        }
+        
+        if (func_counter >= 6) {
+            break;
+        }
+    };
+    
+    println("\n=== Complex Nested Loop with Functions ===");
+    complex_nested_loop_example();
+    
+    println("\n=== All Loop Examples Completed ===");
+}
+
+// Function containing a loop
+def process_with_loop(n) {
+    store sum = 0;
+    store i = 0;
+    
+    println("Processing with loop for n=", n);
+    
+    loop {
+        i = i + 1;
+        sum = sum + i;
+        println("  Iteration ", i, ": sum=", sum);
+        
+        if (i >= n) {
+            break;
+        }
+    };
+    
+    println("Final sum: ", sum);
+    return sum;
+}
+
+// Recursive function that uses a loop
+def recursive_loop_example(level) {
+    if (level <= 0) {
+        println("Base case reached");
+        return;
+    }
+    
+    println("Recursive level ", level);
+    
+    store counter = 0;
+    loop {
+        counter = counter + 1;
+        println("  Loop iteration ", counter, " at level ", level);
+        
+        if (counter >= level) {
+            break;
+        }
+    };
+    
+    // Recursive call
+    recursive_loop_example(level - 1);
+}
+
+// Helper function to square a number
+def square_number(x) {
+    return x * x;
+}
+
+// Helper function to cube a number
+def cube_number(x) {
+    return x * x * x;
+}
+
+// Complex example with nested loops and function calls
+def complex_nested_loop_example() {
+    store outer_count = 0;
+    
+    loop {
+        outer_count = outer_count + 1;
+        println("Outer loop: ", outer_count);
+        
+        store middle_count = 0;
+        loop {
+            middle_count = middle_count + 1;
+            println("  Middle loop: ", middle_count);
+            
+            store inner_count = 0;
+            loop {
+                inner_count = inner_count + 1;
+                
+                // Call function based on iteration
+                if (inner_count % 2 == 0) {
+                    store result = calculate_complex(outer_count, middle_count, inner_count);
+                    println("    Inner loop [even]: ", inner_count, ", result: ", result);
+                } else {
+                    store result = calculate_simple(outer_count, middle_count, inner_count);
+                    println("    Inner loop [odd]: ", inner_count, ", result: ", result);
+                }
+                
+                if (inner_count >= 2) {
+                    break;
+                }
+            };
+            
+            if (middle_count >= 2) {
+                break;
+            }
+        };
+        
+        if (outer_count >= 2) {
+            break;
+        }
+    };
+}
+
+// Complex calculation function
+def calculate_complex(a, b, c) {
+    return (a * b * c) + (a + b + c);
+}
+
+// Simple calculation function
+def calculate_simple(a, b, c) {
+    return a + b + c;
+}

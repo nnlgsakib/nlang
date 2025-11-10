@@ -28,6 +28,7 @@ pub enum TokenType {
     Default,
     Repeat,
     Until,
+    Loop,
     
     // Identifiers and literals
     Identifier(String),
@@ -341,6 +342,7 @@ impl Lexer {
             "default" => TokenType::Default,
             "repeat" => TokenType::Repeat,
             "until" => TokenType::Until,
+            "loop" => TokenType::Loop,
             _ => TokenType::Identifier(text.clone()),
         };
         

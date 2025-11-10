@@ -653,6 +653,13 @@ impl SemanticAnalyzer {
                     condition: Box::new(analyzed_condition),
                 })
             },
+            Statement::Loop { body } => {
+                let analyzed_body = Box::new(self.analyze_statement(*body)?);
+                
+                Ok(Statement::Loop {
+                    body: analyzed_body,
+                })
+            },
         }
     }
     
