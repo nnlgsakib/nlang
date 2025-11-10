@@ -60,6 +60,10 @@ pub enum Statement {
         cases: Vec<WhenCase>,
         default: Option<Box<Statement>>,
     },
+    RepeatUntil {
+        body: Box<Statement>,
+        condition: Box<Expr>,
+    },
 }
 
 #[derive(Debug, Clone, serde::Serialize)]

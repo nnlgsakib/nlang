@@ -26,6 +26,8 @@ pub enum TokenType {
     Pick,
     When,
     Default,
+    Repeat,
+    Until,
     
     // Identifiers and literals
     Identifier(String),
@@ -337,6 +339,8 @@ impl Lexer {
             "pick" => TokenType::Pick,
             "when" => TokenType::When,
             "default" => TokenType::Default,
+            "repeat" => TokenType::Repeat,
+            "until" => TokenType::Until,
             _ => TokenType::Identifier(text.clone()),
         };
         

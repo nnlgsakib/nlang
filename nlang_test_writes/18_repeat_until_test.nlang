@@ -1,0 +1,84 @@
+// Test file for repeat-until loop functionality
+// Demonstrates the do-while style loop with repeat-until syntax
+
+// Repeat-until with function calls
+def increment_and_check(num: int) -> bool {
+    println("Checking: ", num);
+    return num >= 3;
+}
+
+def main() {
+    // Basic repeat-until loop
+    store counter = 0;
+    repeat {
+        println("Counter: ", counter);
+        counter = counter + 1;
+    } until counter >= 5;
+
+    println("Loop completed!");
+
+    // Repeat-until with break statement
+    store i = 0;
+    repeat {
+        println("i: ", i);
+        i = i + 1;
+        if (i == 3) {
+            break;
+        }
+    } until i >= 10;
+
+    println("Break test completed!");
+
+    // Repeat-until with continue statement
+    store j = 0;
+    repeat {
+        j = j + 1;
+        if (j % 2 == 0) {
+            continue;
+        }
+        println("Odd j: ", j);
+    } until j >= 10;
+
+    println("Continue test completed!");
+
+    // Nested repeat-until loops
+    store outer = 1;
+    repeat {
+        store inner = 1;
+        repeat {
+            println("Outer: ", outer, " Inner: ", inner);
+            inner = inner + 1;
+        } until inner > 3;
+        outer = outer + 1;
+    } until outer > 2;
+
+    println("Nested loops completed!");
+
+    // Repeat-until with function calls
+
+    store num = 0;
+    repeat {
+        num = num + 1;
+        println("Current num: ", num);
+    } until increment_and_check(num);
+
+    println("Function call test completed!");
+
+    // Edge case: repeat-until that runs exactly once
+    store once = 0;
+    repeat {
+        println("This should run exactly once");
+        once = once + 1;
+    } until once > 0;
+
+    println("Single execution test completed!");
+
+    // Edge case: repeat-until with false condition initially
+    store flag = true;
+    repeat {
+        println("This should run once even though condition starts true");
+        flag = false;
+    } until !flag;
+
+    println("All repeat-until tests completed successfully!");
+}

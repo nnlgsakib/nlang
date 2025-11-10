@@ -403,6 +403,24 @@ impl Interpreter {
                 }
                 Ok(())
             }
+            Statement::RepeatUntil { body, condition } => {
+                loop {
+                    // Execute the body first (do-while behavior)
+                    match self.execute_statement(body, env) {
+                        Ok(()) => {},
+                        Err(InterpreterError::Break) => break,
+                        Err(InterpreterError::Continue) => continue,
+                        Err(other) => return Err(other),
+                    }
+                    
+                    // Check the condition after executing the body
+                    let cond_val = self.evaluate_expression(condition, env)?;
+                    if cond_val.to_bool()? {
+                        break; // Exit when condition is true
+                    }
+                }
+                Ok(())
+            }
             Statement::For { initializer, condition, increment, body } => {
                 let mut declared_var_name: Option<String> = None;
 

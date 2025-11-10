@@ -468,6 +468,10 @@ impl<'a> Parser<'a> {
         if self.match_token(&TokenType::Pick) {
             return self.pick_statement();
         }
+
+        if self.match_token(&TokenType::Repeat) {
+            return self.repeat_until_statement();
+        }
         
         self.expression_statement()
     }
@@ -643,6 +647,22 @@ impl<'a> Parser<'a> {
             cases,
             default,
         })
+    }
+
+    fn repeat_until_statement(&mut self) -> Result<Statement, ParseError> {
+        // Parse the body (block statement)
+        let body = Box::new(self.statement()?);
+        
+        // Expect the 'until' keyword
+        self.consume(&TokenType::Until, "Expected 'until' after repeat body")?;
+        
+        // Parse the condition (expression)
+        let condition = Box::new(self.expression()?);
+        
+        // Expect semicolon after the condition
+        self.consume(&TokenType::Semicolon, "Expected ';' after until condition")?;
+        
+        Ok(Statement::RepeatUntil { body, condition })
     }
     
     fn expression_statement(&mut self) -> Result<Statement, ParseError> {

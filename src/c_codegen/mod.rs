@@ -185,6 +185,10 @@ fn collect_strings(&mut self, prog: &Program) {
                     walk(generator, default_body);
                 }
             }
+            Statement::RepeatUntil { body, condition } => {
+                walk(generator, body);
+                walk_expr(generator, condition);
+            }
             _ => {}
         }
     }
@@ -204,6 +208,31 @@ fn collect_strings(&mut self, prog: &Program) {
             Expr::Unary { operand, .. } => walk_expr(generator, operand),
             Expr::Call { arguments, .. } => {
                 for a in arguments { walk_expr(generator, a); }
+            }
+            Expr::Index { sequence, index } => {
+                walk_expr(generator, sequence);
+                walk_expr(generator, index);
+            }
+            Expr::ArrayLiteral { elements } => {
+                for element in elements { walk_expr(generator, element); }
+            }
+            Expr::Assign { value, .. } => {
+                walk_expr(generator, value);
+            }
+            Expr::AssignIndex { sequence, index, value } => {
+                walk_expr(generator, sequence);
+                walk_expr(generator, index);
+                walk_expr(generator, value);
+            }
+            Expr::Get { object, .. } => {
+                walk_expr(generator, object);
+            }
+            Expr::Set { object, value, .. } => {
+                walk_expr(generator, object);
+                walk_expr(generator, value);
+            }
+            Expr::Function { parameters: _, body, return_type: _ } => {
+                for stmt in body { walk(generator, stmt); }
             }
             _ => {}
         }
@@ -433,6 +462,13 @@ fn emit_stmt(&mut self, stmt: &Statement) -> Result<(), CCodeGenError> {
             let cond = self.emit_expr(condition)?;
             self.write(&format!("while ({cond}) "));
             self.block(|generator| { generator.emit_stmt(body).unwrap(); });
+        }
+        Statement::RepeatUntil { body, condition } => {
+            // do-while loop: execute body first, then check condition
+            self.line("do ");
+            self.block(|generator| { generator.emit_stmt(body).unwrap(); });
+            let cond = self.emit_expr(condition)?;
+            self.line(&format!("while (!({cond}));"));
         }
         Statement::For { initializer, condition, increment, body } => {
             self.write("for (");
@@ -817,7 +853,7 @@ fn emit_lit(&self, l: &Literal) -> Result<String, CCodeGenError> {
         Literal::USize(i) => i.to_string(),
         Literal::Float(f) => f.to_string(),
         Literal::String(s) => self.str_consts.get(s).cloned()
-            .ok_or_else(|| CCodeGenError::Unsupported("string not collected".into()))?,
+            .ok_or_else(|| CCodeGenError::Unsupported(format!("string not collected: '{}'", s)))?,
         Literal::Boolean(b) => (if *b { "1" } else { "0" }).to_string(),
         Literal::Null => "NULL".to_string(),
     })

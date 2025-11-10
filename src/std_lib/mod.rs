@@ -774,7 +774,7 @@ mod tests {
     #[test]
     fn test_string_length() {
         let args = vec![Expr::Literal(Literal::String("hello".to_string()))];
-        let result = builtin_len(&args).unwrap();
+        let result = builtin_len_string(&args).unwrap();
         
         match result {
             Expr::Literal(Literal::Integer(5)) => {},

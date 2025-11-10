@@ -127,4 +127,23 @@ mod tests {
             _ => panic!("Expected let declaration"),
         }
     }
+
+    #[test]
+    fn test_repeat_until_statement() {
+        let source = "repeat { x = x + 1; } until x > 10;";
+        let tokens = tokenize(source).unwrap();
+        let program = parse(&tokens).unwrap();
+
+        assert_eq!(program.statements.len(), 1);
+        match &program.statements[0] {
+            Statement::RepeatUntil { body, condition } => {
+                // Check that condition is a binary expression with greater than operator
+                match &**condition {
+                    Expr::Binary { operator: BinaryOperator::Greater, .. } => (),
+                    _ => panic!("Expected greater than operation in condition"),
+                }
+            },
+            _ => panic!("Expected repeat-until statement"),
+        }
+    }
 }

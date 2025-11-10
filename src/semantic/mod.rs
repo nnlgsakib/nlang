@@ -637,6 +637,22 @@ impl SemanticAnalyzer {
                     default: analyzed_default,
                 })
             },
+            Statement::RepeatUntil { body, condition } => {
+                let analyzed_body = Box::new(self.analyze_statement(*body)?);
+                let analyzed_condition = self.analyze_expr(*condition)?;
+                
+                // Check that condition is of boolean type
+                if self.infer_type(&analyzed_condition)? != Type::Boolean {
+                    return Err(SemanticError {
+                        message: "Repeat-until condition must be of boolean type".to_string(),
+                    });
+                }
+                
+                Ok(Statement::RepeatUntil {
+                    body: analyzed_body,
+                    condition: Box::new(analyzed_condition),
+                })
+            },
         }
     }
     

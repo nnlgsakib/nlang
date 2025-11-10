@@ -66,6 +66,25 @@ mod tests {
     }
 
     #[test]
+    fn test_repeat_until_statement_semantic_analysis() {
+        let source = "def main() { store x = 0; repeat { x = x + 1; } until x > 5; }";
+        let tokens = tokenize(source).unwrap();
+        let program = parse(&tokens).unwrap();
+        let result = analyze(program);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_repeat_until_boolean_condition() {
+        // This should fail because the condition must be boolean
+        let source = "def main() { repeat { } until 42; }";
+        let tokens = tokenize(source).unwrap();
+        let program = parse(&tokens).unwrap();
+        let result = analyze(program);
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn test_i32_literal_type_inference() {
         let source = "def main() { store x = 42i32; }";
         let tokens = tokenize(source).unwrap();
