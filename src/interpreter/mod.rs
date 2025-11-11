@@ -1,166 +1,14 @@
-use crate::ast::{Program, Statement, Expr, Type, BinaryOperator, UnaryOperator, Literal, Parameter};
+use crate::ast::{Program, Statement, Expr, BinaryOperator, UnaryOperator, Literal};
 use crate::lexer::Lexer;
 use crate::parser::Parser;
-use std::collections::HashMap;
 use std::fs;
-use thiserror::Error;
+pub use self::error::InterpreterError;
+pub use self::value::{Value, Function};
+pub use self::environment::Environment;
 
-#[derive(Error, Debug)]
-pub enum InterpreterError {
-    #[error("Variable '{name}' not found")]
-    VariableNotFound { name: String },
-    #[error("Function '{name}' not found")]
-    FunctionNotFound { name: String },
-    #[error("Type mismatch: expected {expected}, got {actual}")]
-    TypeMismatch { expected: String, actual: String },
-    #[error("Division by zero")]
-    DivisionByZero,
-    #[error("Invalid operation: {message}")]
-    InvalidOperation { message: String },
-    #[error("Return statement executed")]
-    ReturnValue(Value),
-    #[error("Break statement executed")]
-    Break,
-    #[error("Continue statement executed")]
-    Continue,
-    #[error("Index out of bounds: index {index}, length {length}")]
-    IndexOutOfBounds { index: i64, length: usize },
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum Value {
-    Integer(i64),
-    Float(f64),
-    Boolean(bool),
-    String(String),
-    Array(Vec<Value>),
-}
-
-use std::fmt;
-
-impl fmt::Display for Value {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Value::Integer(i) => write!(f, "{}", i),
-            Value::Float(fl) => write!(f, "{}", fl),
-            Value::Boolean(b) => write!(f, "{}", b),
-            Value::String(s) => write!(f, "{}", s),
-            Value::Array(arr) => {
-                write!(f, "[")?;
-                for (i, item) in arr.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{}", item)?;
-                }
-                write!(f, "]")
-            }
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Function {
-    pub name: String,
-    pub parameters: Vec<Parameter>,
-    pub body: Vec<Statement>,
-    pub return_type: Option<Type>,
-}
-
-impl Value {
-    pub fn type_name(&self) -> &'static str {
-        match self {
-            Value::Integer(_) => "int",
-            Value::Float(_) => "float",
-            Value::Boolean(_) => "bool",
-            Value::String(_) => "string",
-            Value::Array(_) => "array",
-        }
-    }
-    
-    pub fn to_int(&self) -> Result<i64, InterpreterError> {
-        match self {
-            Value::Integer(i) => Ok(*i),
-            Value::Float(f) => Ok(*f as i64),
-            Value::Boolean(b) => Ok(if *b { 1 } else { 0 }),
-            _ => Err(InterpreterError::TypeMismatch {
-                expected: "int".to_string(),
-                actual: self.type_name().to_string(),
-            }),
-        }
-    }
-    
-    pub fn to_float(&self) -> Result<f64, InterpreterError> {
-        match self {
-            Value::Integer(i) => Ok(*i as f64),
-            Value::Float(f) => Ok(*f),
-            _ => Err(InterpreterError::TypeMismatch {
-                expected: "float".to_string(),
-                actual: self.type_name().to_string(),
-            }),
-        }
-    }
-    
-    pub fn to_bool(&self) -> Result<bool, InterpreterError> {
-        match self {
-            Value::Boolean(b) => Ok(*b),
-            Value::Integer(i) => Ok(*i != 0),
-            Value::Float(f) => Ok(*f != 0.0),
-            _ => Err(InterpreterError::TypeMismatch {
-                expected: "bool".to_string(),
-                actual: self.type_name().to_string(),
-            }),
-        }
-    }
-}
-
-#[derive(Clone)]
-pub struct Environment {
-    variables: HashMap<String, Value>,
-    functions: HashMap<String, Function>,
-}
-
-impl Environment {
-    pub fn new() -> Self {
-        let mut env = Environment {
-            variables: HashMap::new(),
-            functions: HashMap::new(),
-        };
-        
-        // Add built-in variables
-        env.variables.insert("PI".to_string(), Value::Float(std::f64::consts::PI));
-        
-        env
-    }
-    
-    pub fn define_variable(&mut self, name: String, value: Value) {
-        self.variables.insert(name, value);
-    }
-    
-    pub fn get_variable(&self, name: &str) -> Result<Value, InterpreterError> {
-        self.variables.get(name)
-            .cloned()
-            .ok_or_else(|| InterpreterError::VariableNotFound { name: name.to_string() })
-    }
-    
-    pub fn set_variable(&mut self, name: String, value: Value) -> Result<(), InterpreterError> {
-        if self.variables.contains_key(&name) {
-            self.variables.insert(name, value);
-            Ok(())
-        } else {
-            Err(InterpreterError::VariableNotFound { name })
-        }
-    }
-    
-    pub fn define_function(&mut self, func: Function) {
-        self.functions.insert(func.name.clone(), func);
-    }
-    
-    pub fn get_function(&self, name: &str) -> Result<&Function, InterpreterError> {
-        self.functions.get(name)
-            .ok_or_else(|| InterpreterError::FunctionNotFound { name: name.to_string() })
-    }
-}
+pub mod environment;
+pub mod error;
+pub mod value;
 
 pub struct Interpreter {
     global_env: Environment,
@@ -217,7 +65,7 @@ impl Interpreter {
             let mut env = self.global_env.clone();
             for statement in &program.statements {
                 match self.execute_statement(statement, &mut env) {
-                    Ok(_) => {}
+                    Ok(_) => {} // Ignore successful execution of top-level statements
                     Err(InterpreterError::ReturnValue(value)) => {
                         return Ok(value.to_int().unwrap_or(0) as i32);
                     }
@@ -349,13 +197,13 @@ impl Interpreter {
         // Execute function body
         for statement in &func.body {
             match self.execute_statement(statement, &mut local_env) {
-                Ok(_) => {}
+                Ok(_) => {} // Ignore successful execution of statements within the function body
                 Err(InterpreterError::ReturnValue(value)) => return Ok(value),
                 Err(e) => return Err(e),
             }
         }
         
-        // Default return value
+        // Default return value if no explicit return is found
         Ok(Value::Integer(0))
     }
     
@@ -366,7 +214,8 @@ impl Interpreter {
                     let val = self.evaluate_expression(init_expr, env)?;
                     env.define_variable(name.clone(), val);
                 } else {
-                    // Default initialization based on type (if we had type info)
+                    // Default initialization for variables without explicit initializer (e.g., to 0 for integers)
+                    // This assumes a default type, which might need refinement based on actual type system.
                     env.define_variable(name.clone(), Value::Integer(0));
                 }
                 Ok(())
@@ -376,6 +225,7 @@ impl Interpreter {
                     let val = self.evaluate_expression(ret_expr, env)?;
                     Err(InterpreterError::ReturnValue(val))
                 } else {
+                    // Return default value (e.g., 0 for int) if no value is specified
                     Err(InterpreterError::ReturnValue(Value::Integer(0)))
                 }
             }
@@ -395,10 +245,10 @@ impl Interpreter {
                         break;
                     }
                     match self.execute_statement(body, env) {
-                        Ok(()) => {},
-                        Err(InterpreterError::Break) => break,
-                        Err(InterpreterError::Continue) => continue,
-                        Err(other) => return Err(other),
+                        Ok(()) => {}, // Continue loop
+                        Err(InterpreterError::Break) => break, // Exit loop
+                        Err(InterpreterError::Continue) => continue, // Skip to next iteration
+                        Err(other) => return Err(other), // Propagate other errors
                     }
                 }
                 Ok(())
@@ -407,10 +257,10 @@ impl Interpreter {
                 loop {
                     // Execute the body first (do-while behavior)
                     match self.execute_statement(body, env) {
-                        Ok(()) => {},
-                        Err(InterpreterError::Break) => break,
-                        Err(InterpreterError::Continue) => continue,
-                        Err(other) => return Err(other),
+                        Ok(()) => {}, // Continue loop
+                        Err(InterpreterError::Break) => break, // Exit loop
+                        Err(InterpreterError::Continue) => continue, // Skip to next iteration
+                        Err(other) => return Err(other), // Propagate other errors
                     }
                     
                     // Check the condition after executing the body
@@ -424,10 +274,10 @@ impl Interpreter {
             Statement::Loop { body } => {
                 loop {
                     match self.execute_statement(body, env) {
-                        Ok(()) => {},
-                        Err(InterpreterError::Break) => break,
-                        Err(InterpreterError::Continue) => continue,
-                        Err(other) => return Err(other),
+                        Ok(()) => {}, // Continue loop
+                        Err(InterpreterError::Break) => break, // Exit loop
+                        Err(InterpreterError::Continue) => continue, // Skip to next iteration
+                        Err(other) => return Err(other), // Propagate other errors
                     }
                 }
                 Ok(())
@@ -444,7 +294,7 @@ impl Interpreter {
 
                 loop {
                     let cond_val = if let Some(cond_expr) = condition {
-                        self.evaluate_expression(cond_expr, env)?.to_bool()?
+                        self.evaluate_expression(cond_expr, env)?.to_bool()? 
                     } else {
                         true // No condition means infinite loop
                     };
@@ -454,15 +304,16 @@ impl Interpreter {
                     }
 
                     match self.execute_statement(body, env) {
-                        Ok(()) => {},
-                        Err(InterpreterError::Break) => break,
+                        Ok(()) => {}, // Continue loop
+                        Err(InterpreterError::Break) => break, // Exit loop
                         Err(InterpreterError::Continue) => {
                             if let Some(inc_expr) = increment {
                                 self.evaluate_expression(inc_expr, env)?;
                             }
-                            continue;
+                            continue; // Skip to next iteration
                         },
                         Err(other) => {
+                            // Clean up declared variable if an error occurs within the loop body
                             if let Some(name) = declared_var_name {
                                 env.variables.remove(&name);
                             }
@@ -475,6 +326,7 @@ impl Interpreter {
                     }
                 }
 
+                // Clean up the loop variable after the loop finishes
                 if let Some(name) = declared_var_name {
                     env.variables.remove(&name);
                 }
@@ -482,7 +334,7 @@ impl Interpreter {
                 Ok(())
             }
             Statement::FunctionDeclaration { .. } => {
-                // Already handled in first pass
+                // Function declarations are handled in the first pass of execute_program_with_path
                 Ok(())
             }
             Statement::Expression(expr) => {
@@ -492,10 +344,10 @@ impl Interpreter {
             Statement::Block { statements } => {
                 for stmt in statements {
                     match self.execute_statement(stmt, env) {
-                        Ok(()) => {},
-                        Err(InterpreterError::Break) => return Err(InterpreterError::Break),
-                        Err(InterpreterError::Continue) => return Err(InterpreterError::Continue),
-                        Err(other) => return Err(other),
+                        Ok(()) => {}, // Continue executing statements in the block
+                        Err(InterpreterError::Break) => return Err(InterpreterError::Break), // Propagate break
+                        Err(InterpreterError::Continue) => return Err(InterpreterError::Continue), // Propagate continue
+                        Err(other) => return Err(other), // Propagate other errors
                     }
                 }
                 Ok(())
