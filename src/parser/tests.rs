@@ -136,7 +136,7 @@ mod tests {
 
         assert_eq!(program.statements.len(), 1);
         match &program.statements[0] {
-            Statement::RepeatUntil { body, condition } => {
+            Statement::RepeatUntil { body: _, condition } => {
                 // Check that condition is a binary expression with greater than operator
                 match &**condition {
                     Expr::Binary { operator: BinaryOperator::Greater, .. } => (),
