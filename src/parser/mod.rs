@@ -1,12 +1,35 @@
+//! Main parser module that orchestrates the parsing process
+//! 
+//! This module provides the main entry point for parsing tokens into an AST.
+//! It delegates specific parsing tasks to submodules for better organization
+//! and maintainability.
+
 use crate::lexer::{Token, TokenType};
 use crate::ast::*;
 
 #[cfg(test)]
 mod tests;
 
+// Re-export submodules for external access
+pub mod declarations;
+pub mod statements;
+pub mod expressions;
+pub mod types;
+pub mod utils;
+
+// Re-export commonly used items
+pub use declarations::*;
+pub use statements::*;
+pub use expressions::*;
+pub use types::*;
+pub use utils::*;
+
+/// Error type for parsing failures
 #[derive(Debug)]
 pub struct ParseError {
+    /// Human-readable error message
     pub message: String,
+    /// Line number where the error occurred
     pub line: usize,
 }
 
@@ -18,22 +41,43 @@ impl std::fmt::Display for ParseError {
 
 impl std::error::Error for ParseError {}
 
+/// Main entry point for parsing tokens into an AST
+/// 
+/// # Arguments
+/// * `tokens` - Slice of tokens to parse
+/// 
+/// # Returns
+/// * `Result<Program, ParseError>` - Parsed program or error
 pub fn parse(tokens: &[Token]) -> Result<Program, ParseError> {
     let mut parser = Parser::new(tokens);
     let statements = parser.parse_program()?;
     Ok(Program { statements })
 }
 
+/// Main parser struct that coordinates the parsing process
 pub struct Parser<'a> {
+    /// Reference to the tokens being parsed
     tokens: &'a [Token],
+    /// Current position in the token stream
     current: usize,
 }
 
 impl<'a> Parser<'a> {
+    /// Creates a new parser instance
+    /// 
+    /// # Arguments
+    /// * `tokens` - Reference to tokens to parse
+    /// 
+    /// # Returns
+    /// * `Parser` - New parser instance
     pub fn new(tokens: &'a [Token]) -> Self {
         Self { tokens, current: 0 }
     }
     
+    /// Parses the entire program into a list of statements
+    /// 
+    /// # Returns
+    /// * `Result<Vec<Statement>, ParseError>` - List of statements or error
     pub fn parse_program(&mut self) -> Result<Vec<Statement>, ParseError> {
         let mut statements = Vec::new();
         
