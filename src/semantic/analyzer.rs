@@ -750,31 +750,63 @@ impl SemanticAnalyzer {
                 })
             },
             Expr::Call { callee, arguments } => {
-                // Handle different types of function calls
+                let mut analyzed_arguments = Vec::new();
+                for arg in arguments {
+                    analyzed_arguments.push(self.analyze_expr(arg)?);
+                }
+
                 let func_name = match callee.as_ref() {
                     Expr::Variable(name) => name.clone(),
                     Expr::Get { object, name } => {
-                        // Handle module-qualified function calls (e.g., math.add())
-                        if let Expr::Variable(namespace_name) = object.as_ref() {
-                            format!("{}.{}", namespace_name, name)
-                        } else {
-                            return Err(SemanticError {
-                                message: "Complex function calls not yet supported".to_string(),
-                            });
+                        let analyzed_object = self.analyze_expr(*object.clone())?;
+                        let obj_type = self.infer_type(&analyzed_object)?;
+                        match obj_type {
+                            Type::String => {
+                                match name.as_str() {
+                                    "upper" | "lower" | "trim" => {
+                                        if !analyzed_arguments.is_empty() {
+                                            return Err(SemanticError { message: format!("Method '{}' on string takes 0 arguments", name) });
+                                        }
+                                        return Ok(Expr::Call { callee: Box::new(Expr::Get { object: Box::new(analyzed_object), name: name.clone() }), arguments: analyzed_arguments });
+                                    }
+                                    "contains" => {
+                                        if analyzed_arguments.len() != 1 {
+                                            return Err(SemanticError { message: "String.contains() expects 1 argument".to_string() });
+                                        }
+                                        let arg_t = self.infer_type(&analyzed_arguments[0])?;
+                                        if arg_t != Type::String {
+                                            return Err(SemanticError { message: "String.contains() argument must be string".to_string() });
+                                        }
+                                        return Ok(Expr::Call { callee: Box::new(Expr::Get { object: Box::new(analyzed_object), name: name.clone() }), arguments: analyzed_arguments });
+                                    }
+                                    _ => {
+                                        return Err(SemanticError { message: format!("Unknown string method: {}", name) });
+                                    }
+                                }
+                            }
+                            Type::Array(_, _) => {
+                                match name.as_str() {
+                                    "len" => {
+                                        if !analyzed_arguments.is_empty() {
+                                            return Err(SemanticError { message: "Array.len() takes 0 arguments".to_string() });
+                                        }
+                                        return Ok(Expr::Call { callee: Box::new(Expr::Get { object: Box::new(analyzed_object), name: name.clone() }), arguments: analyzed_arguments });
+                                    }
+                                    _ => {
+                                        return Err(SemanticError { message: format!("Unknown array method: {}", name) });
+                                    }
+                                }
+                            }
+                            _ => {
+                                return Err(SemanticError { message: "Method calls supported only on string and array".to_string() });
+                            }
                         }
-                    },
+                    }
                     _ => {
-                        return Err(SemanticError {
-                            message: "Complex function calls not yet supported".to_string(),
-                        });
+                        return Err(SemanticError { message: "Complex function calls not yet supported".to_string() });
                     }
                 };
-                
-                let mut analyzed_arguments = Vec::new();                                                          
-                for arg in arguments {                                                                            
-                    analyzed_arguments.push(self.analyze_expr(arg)?);                                             
-                }                                                                                                 
-                                                                                                                  
+
                 if func_name == "print" || func_name == "println" {
                     // These are variadic, so we don't check argument count or types.
                 } else if func_name == "len" {
@@ -1367,8 +1399,7 @@ impl SemanticAnalyzer {
                     },
                 }
             },
-            Expr::Call { callee, .. } => {
-                // For function calls, we need to look up the return type in the symbol table
+            Expr::Call { callee, arguments: _ } => {
                 match callee.as_ref() {
                     Expr::Variable(func_name) => {
                         if func_name == "len" {
@@ -1411,24 +1442,36 @@ impl SemanticAnalyzer {
                         }
                     },
                     Expr::Get { object, name } => {
-                        // Handle namespace function calls (e.g., math.add())
-                        if let Expr::Variable(namespace_name) = object.as_ref() {
-                            let qualified_name = format!("{}.{}", namespace_name, name);
-                            match self.get_symbol(&qualified_name) {
-                                Ok(Symbol::Function { return_type, .. }) => Ok(return_type),
-                                Ok(_) => Err(SemanticError {
-                                    message: format!("'{}' is not a function", qualified_name),
-                                }),
-                                Err(_) => Err(SemanticError {
-                                    message: format!("Undefined function: {}", qualified_name),
-                                }),
+                        let obj_type = self.infer_type(object)?;
+                        match obj_type {
+                            Type::String => {
+                                match name.as_str() {
+                                    "upper" | "lower" | "trim" => Ok(Type::String),
+                                    "contains" => Ok(Type::Boolean),
+                                    _ => Err(SemanticError { message: format!("Unknown string method: {}", name) }),
+                                }
                             }
-                        } else {
-                            Err(SemanticError {
-                                message: "Complex function call expressions not yet supported".to_string(),
-                            })
+                            Type::Array(_inner, _) => {
+                                match name.as_str() {
+                                    "len" => Ok(Type::Integer),
+                                    _ => Err(SemanticError { message: format!("Unknown array method: {}", name) }),
+                                }
+                            }
+                            _ => {
+                                // Handle namespace function calls (e.g., math.add())
+                                if let Expr::Variable(namespace_name) = object.as_ref() {
+                                    let qualified_name = format!("{}.{}", namespace_name, name);
+                                    match self.get_symbol(&qualified_name) {
+                                        Ok(Symbol::Function { return_type, .. }) => Ok(return_type),
+                                        Ok(_) => Err(SemanticError { message: format!("'{}' is not a function", qualified_name) }),
+                                        Err(_) => Err(SemanticError { message: format!("Undefined function: {}", qualified_name) }),
+                                    }
+                                } else {
+                                    Err(SemanticError { message: "Complex function call expressions not yet supported".to_string() })
+                                }
+                            }
                         }
-                    },
+                    }
                     _ => Err(SemanticError {
                         message: "Complex function call expressions not yet supported".to_string(),
                     }),

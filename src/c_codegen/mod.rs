@@ -25,6 +25,11 @@ pub struct CCodeGenerator {
     current_function_return_type: Option<String>,
     function_parameters: std::collections::HashMap<String, Type>,
     need_sha_helpers: bool,
+    need_str_upper: bool,
+    need_str_lower: bool,
+    need_str_trim: bool,
+    need_str_contains: bool,
+    bool_vars: std::collections::HashMap<String, bool>,
 }
 impl CCodeGenerator {
     pub fn new() -> Self {
@@ -39,6 +44,11 @@ impl CCodeGenerator {
             current_function_return_type: None,
             function_parameters: Default::default(),
             need_sha_helpers: false,
+            need_str_upper: false,
+            need_str_lower: false,
+            need_str_trim: false,
+            need_str_contains: false,
+            bool_vars: Default::default(),
         };
         generator.line("#include <stdio.h>");
         generator.line("#include <string.h>");
@@ -47,6 +57,7 @@ impl CCodeGenerator {
         generator.line("#include <stdint.h>"); // For int32_t
         generator.line("#include <time.h>");
         generator.line("#include <locale.h>");  // For setlocale
+        generator.line("#include <ctype.h>");
         generator.line("#ifdef _WIN32");
         generator.line("#include <windows.h>");
         generator.line("#include <io.h>");
@@ -173,6 +184,11 @@ pub fn generate_program(mut self, prog: &Program) -> Result<String, CCodeGenErro
     self.extract_function_return_types(prog);
     self.emit_string_consts()?;
     if self.need_sha_helpers { self.emit_sha_helpers(); }
+    // Emit string helpers unconditionally to avoid missing prototypes/definitions
+    self.emit_str_upper();
+    self.emit_str_lower();
+    self.emit_str_trim();
+    self.emit_str_contains();
     self.emit_forward_decls(prog)?;
     self.emit_functions(prog)?;
     Ok(self.buf)
@@ -240,6 +256,18 @@ fn scan_expr(&mut self, e: &Expr) {
             if let Expr::Variable(name) = callee.as_ref() {
                 if name == "sha256" || name == "sha256_random" { self.need_sha_helpers = true; }
             }
+            if let Expr::Get { object, name } = callee.as_ref() {
+                let t = self.infer_type(object);
+                if t == "const char*" || t == "char*" {
+                    match name.as_str() {
+                        "upper" => { self.need_str_upper = true; }
+                        "lower" => { self.need_str_lower = true; }
+                        "trim" => { self.need_str_trim = true; }
+                        "contains" => { self.need_str_contains = true; }
+                        _ => {}
+                    }
+                }
+            }
             for a in arguments { self.scan_expr(a); }
         }
         Expr::Binary { left, right, .. } => { self.scan_expr(left); self.scan_expr(right); }
@@ -280,6 +308,52 @@ fn emit_sha_helpers(&mut self) {
     self.line("static char* sha256_hex_bytes(const unsigned char* data, size_t len){ unsigned char digest[32]; SHA256_CTX ctx; sha256_init(&ctx); sha256_update(&ctx, data, len); sha256_final(&ctx, digest); static const char* hex = \"0123456789abcdef\"; char* out = (char*)malloc(65); if(!out) return NULL; for(int i=0;i<32;i++){ out[i*2] = hex[(digest[i]>>4)&0xF]; out[i*2+1] = hex[digest[i]&0xF]; } out[64]=0; return out; }");
     self.line("static char* sha256_hex_str(const char* s){ return sha256_hex_bytes((const unsigned char*)s, strlen(s)); }");
     self.line("static char* sha256_random_hex(size_t n){ static int seeded=0; if(!seeded){ srand((unsigned)time(NULL)); seeded=1; } unsigned char* buf=(unsigned char*)malloc(n); if(!buf) return NULL; for(size_t i=0;i<n;i++){ buf[i]=(unsigned char)(rand()&0xFF); } char* out=sha256_hex_bytes(buf, n); free(buf); return out; }");
+}
+fn emit_str_upper(&mut self) {
+    self.line("static char* str_upper(const char* s){");
+    self.push();
+    self.line("size_t n = strlen(s);");
+    self.line("char* out = (char*)malloc(n+1);");
+    self.line("if(!out) return NULL;");
+    self.line("for(size_t i=0;i<n;i++){ out[i] = (char)toupper((unsigned char)s[i]); }");
+    self.line("out[n] = 0;");
+    self.line("return out;");
+    self.pop();
+    self.line("}");
+}
+fn emit_str_lower(&mut self) {
+    self.line("static char* str_lower(const char* s){");
+    self.push();
+    self.line("size_t n = strlen(s);");
+    self.line("char* out = (char*)malloc(n+1);");
+    self.line("if(!out) return NULL;");
+    self.line("for(size_t i=0;i<n;i++){ out[i] = (char)tolower((unsigned char)s[i]); }");
+    self.line("out[n] = 0;");
+    self.line("return out;");
+    self.pop();
+    self.line("}");
+}
+fn emit_str_trim(&mut self) {
+    self.line("static char* str_trim(const char* s){");
+    self.push();
+    self.line("size_t n = strlen(s);");
+    self.line("size_t start = 0; while(start < n && isspace((unsigned char)s[start])) start++;");
+    self.line("size_t end = n; while(end>start && isspace((unsigned char)s[end-1])) end--;");
+    self.line("size_t m = end - start;");
+    self.line("char* out = (char*)malloc(m+1);");
+    self.line("if(!out) return NULL;");
+    self.line("memcpy(out, s+start, m);");
+    self.line("out[m] = 0;");
+    self.line("return out;");
+    self.pop();
+    self.line("}");
+}
+fn emit_str_contains(&mut self) {
+    self.line("static int str_contains(const char* hay, const char* needle){");
+    self.push();
+    self.line("return strstr(hay, needle) != NULL;");
+    self.pop();
+    self.line("}");
 }
 // --------------------------------------------------------------------- //
 // String constants
@@ -552,6 +626,7 @@ fn emit_function(&mut self, stmt: &Statement) -> Result<(), CCodeGenError> {
         self.write(" ");
         self.write(&p.name);
         self.vars.insert(p.name.clone(), ty);
+        if let Some(Type::Boolean) = p.param_type.as_ref() { self.bool_vars.insert(p.name.clone(), true); }
         first = false;
     }
     if parameters.is_empty() {
@@ -600,6 +675,7 @@ fn emit_stmt(&mut self, stmt: &Statement) -> Result<(), CCodeGenError> {
                 ty.clone()
             };
             self.vars.insert(name.clone(), var_type_to_store);
+            if let Some(Type::Boolean) = var_type { self.bool_vars.insert(name.clone(), true); }
             if let Some(init) = initializer {
                 let init_code = self.emit_expr(init)?;
                 
@@ -845,7 +921,34 @@ fn emit_expr(&mut self, e: &Expr) -> Result<String, CCodeGenError> {
             let fname = if let Expr::Variable(v) = callee.as_ref() {
                 v.clone()
             } else {
-                return Err(CCodeGenError::Unsupported("complex callee".into()));
+                if let Expr::Get { object, name } = callee.as_ref() {
+                    let obj_code = self.emit_expr(object)?;
+                    let obj_ty = self.infer_type(object);
+                    if obj_ty == "const char*" || obj_ty == "char*" {
+                        match name.as_str() {
+                            "upper" => { return Ok(format!("str_upper({})", obj_code)); }
+                            "lower" => { return Ok(format!("str_lower({})", obj_code)); }
+                            "trim" => { return Ok(format!("str_trim({})", obj_code)); }
+                            "contains" => {
+                                if arguments.len() != 1 { return Err(CCodeGenError::Unsupported("String.contains() expects 1 argument".into())); }
+                                let arg_code = self.emit_expr(&arguments[0])?;
+                                return Ok(format!("str_contains({}, {})", obj_code, arg_code));
+                            }
+                            _ => {}
+                        }
+                    }
+                    if name == "len" {
+                        if let Expr::Variable(var_name) = object.as_ref() {
+                            if let Some(Type::Array(_, sz)) = self.function_parameters.get(var_name) {
+                                return Ok(format!("{}", sz));
+                            }
+                        }
+                        return Ok(format!("(sizeof({}) / sizeof({}[0]))", obj_code, obj_code));
+                    }
+                    return Err(CCodeGenError::Unsupported("complex callee".into()));
+                } else {
+                    return Err(CCodeGenError::Unsupported("complex callee".into()));
+                }
             };
             // built-ins
             match fname.as_str() {
@@ -1007,7 +1110,7 @@ fn emit_expr(&mut self, e: &Expr) -> Result<String, CCodeGenError> {
                     let arg_type = self.infer_type(arg_expr);
                     if arg_type == "const char*" || arg_type == "char*" {
                         return Ok(format!("sha256_hex_str({})", arg_code));
-                    } else if let Expr::Variable(var_name) = arg_expr {
+                    } else if let Expr::Variable(_var_name) = arg_expr {
                         // Compute array length using sizeof trick
                         let len_code = format!("(sizeof({}) / sizeof({}[0]))", arg_code, arg_code);
                         return Ok(format!("sha256_hex_bytes((const unsigned char*){}, {})", arg_code, len_code));
@@ -1130,16 +1233,19 @@ fn type_to_c(&self, t: &Type) -> String {
 }
 
 fn array_type_to_c_decl(&self, t: &Type, name: &str) -> String {
-    match t {
-        Type::Array(inner, size) => {
-            let base_type = self.array_type_to_c_decl(inner, name);
-            format!("{}[{}]", base_type, size)
-        }
-        _ => {
-            let base_type = self.type_to_c(t);
-            format!("{} {}", base_type, name)
-        }
+    // Collect dimensions outer-first and emit in the same order
+    let mut dims: Vec<usize> = Vec::new();
+    let mut base = t;
+    while let Type::Array(inner, size) = base {
+        dims.push(*size);
+        base = inner;
     }
+    let base_type = self.type_to_c(base);
+    let mut decl = format!("{} {}", base_type, name);
+    for d in dims {
+        decl.push_str(&format!("[{}]", d));
+    }
+    decl
 }
 fn binop(&self, op: &BinaryOperator) -> &'static str {
     match op {
@@ -1210,6 +1316,28 @@ fn is_string_expression(&self, expr: &Expr) -> bool {
     }
 }
 
+fn is_boolean_expression(&self, expr: &Expr) -> bool {
+    match expr {
+        Expr::Literal(Literal::Boolean(_)) => true,
+        Expr::Unary { operator, .. } => matches!(operator, UnaryOperator::Not),
+        Expr::Binary { operator, .. } => match operator {
+            BinaryOperator::EqualEqual | BinaryOperator::NotEqual |
+            BinaryOperator::Less | BinaryOperator::LessEqual |
+            BinaryOperator::Greater | BinaryOperator::GreaterEqual |
+            BinaryOperator::And | BinaryOperator::Or => true,
+            _ => false,
+        },
+        Expr::Call { callee, .. } => {
+            if let Expr::Get { object, name } = callee.as_ref() {
+                let obj_ty = self.infer_type(object);
+                (obj_ty == "const char*" || obj_ty == "char*") && name == "contains"
+            } else { false }
+        }
+        Expr::Variable(name) => self.bool_vars.get(name).copied().unwrap_or(false),
+        _ => false,
+    }
+}
+
 #[allow(dead_code)]
 fn is_function_parameter_array(&self, var_name: &str) -> bool {
     // Check if the variable is a function parameter and is an array type
@@ -1252,27 +1380,41 @@ fn infer_type(&self, e: &Expr) -> String {
         Expr::Literal(Literal::U32(_)) => "uint32_t".into(),
         Expr::Literal(Literal::U64(_)) => "uint64_t".into(),
         Expr::Literal(Literal::USize(_)) => "size_t".into(),
-        Expr::Call { callee, .. } => {
-            if let Expr::Variable(func_name) = callee.as_ref() {
-                // Check if this is a built-in function with known return type
-                match func_name.as_str() {
-                    "str" => "char*".into(),
-                    "input" => "char*".into(),
-                    "str_concat" => "char*".into(),
-                    "int_to_str" => "char*".into(),
-                    "float_to_str" => "char*".into(),
-                    "sha256" => "char*".into(),
-                    "int" => "int".into(),
-                    "float" => "double".into(),
-                    "abs" => "int".into(),
-                    "abs_float" => "double".into(),
-                    _ => (*self.function_return_types).get(func_name)
-                        .map(|s| s.as_str())
-                        .unwrap_or("int")
-                        .to_string(),
+        Expr::Call { callee, arguments: _ } => {
+            match callee.as_ref() {
+                Expr::Variable(func_name) => {
+                    match func_name.as_str() {
+                        "str" => "char*".into(),
+                        "input" => "char*".into(),
+                        "str_concat" => "char*".into(),
+                        "int_to_str" => "char*".into(),
+                        "float_to_str" => "char*".into(),
+                        "sha256" => "char*".into(),
+                        "int" => "int".into(),
+                        "float" => "double".into(),
+                        "abs" => "int".into(),
+                        "abs_float" => "double".into(),
+                        _ => (*self.function_return_types).get(func_name)
+                            .map(|s| s.as_str())
+                            .unwrap_or("int")
+                            .to_string(),
+                    }
                 }
-            } else {
-                "int".into()
+                Expr::Get { object, name } => {
+                    let obj_ty = self.infer_type(object);
+                    if obj_ty == "const char*" || obj_ty == "char*" {
+                        match name.as_str() {
+                            "upper" | "lower" | "trim" => "char*".into(),
+                            "contains" => "int".into(),
+                            _ => "int".into(),
+                        }
+                    } else if obj_ty.contains("[") {
+                        if name == "len" { "int".into() } else { "int".into() }
+                    } else {
+                        "int".into()
+                    }
+                }
+                _ => "int".into(),
             }
         },
         Expr::ArrayLiteral { elements } => {
@@ -1327,7 +1469,13 @@ fn print_fmt(&self, e: &Expr, code: &str) -> Result<(String, String), CCodeGenEr
         _ => {
             let ty = self.infer_type(e);
             match ty.as_str() {
-                "int" => ("%d".into(), code.into()),
+                "int" => {
+                    if self.is_boolean_expression(e) {
+                        ("%s".into(), format!("(({}) ? \"true\" : \"false\")", code))
+                    } else {
+                        ("%d".into(), code.into())
+                    }
+                },
                 "int8_t" | "int16_t" | "int32_t" => ("%d".into(), code.into()),
                 "int64_t" => ("%ld".into(), code.into()),
                 "intptr_t" => ("%ld".into(), code.into()), // Approximation

@@ -425,23 +425,70 @@ impl Interpreter {
                 self.evaluate_unary_op(operator, &val)
             }
             Expr::Call { callee, arguments } => {
-                // Handle different types of function calls
                 let func_name = match callee.as_ref() {
                     Expr::Variable(name) => name.clone(),
                     Expr::Get { object, name } => {
-                        // Handle module-qualified function calls (e.g., math.add())
-                        if let Expr::Variable(namespace_name) = object.as_ref() {
-                            format!("{}.{}", namespace_name, name)
-                        } else {
-                            return Err(InterpreterError::InvalidOperation {
-                                message: "Complex function calls not yet supported".to_string(),
-                            });
+                        let obj_val = self.evaluate_expression(object, env)?;
+                        match obj_val {
+                            Value::String(s) => {
+                                match name.as_str() {
+                                    "upper" => {
+                                        if !arguments.is_empty() {
+                                            return Err(InterpreterError::InvalidOperation { message: "String.upper() takes 0 arguments".to_string() });
+                                        }
+                                        return Ok(Value::String(s.to_uppercase()));
+                                    }
+                                    "lower" => {
+                                        if !arguments.is_empty() {
+                                            return Err(InterpreterError::InvalidOperation { message: "String.lower() takes 0 arguments".to_string() });
+                                        }
+                                        return Ok(Value::String(s.to_lowercase()));
+                                    }
+                                    "trim" => {
+                                        if !arguments.is_empty() {
+                                            return Err(InterpreterError::InvalidOperation { message: "String.trim() takes 0 arguments".to_string() });
+                                        }
+                                        return Ok(Value::String(s.trim().to_string()));
+                                    }
+                                    "contains" => {
+                                        if arguments.len() != 1 {
+                                            return Err(InterpreterError::InvalidOperation { message: "String.contains() expects 1 argument".to_string() });
+                                        }
+                                        let needle = self.evaluate_expression(&arguments[0], env)?;
+                                        match needle {
+                                            Value::String(n) => return Ok(Value::Boolean(s.contains(&n))),
+                                            _ => return Err(InterpreterError::InvalidOperation { message: "String.contains() argument must be string".to_string() }),
+                                        }
+                                    }
+                                    _ => {
+                                        return Err(InterpreterError::InvalidOperation { message: format!("Unknown string method: {}", name) });
+                                    }
+                                }
+                            }
+                            Value::Array(a) => {
+                                match name.as_str() {
+                                    "len" => {
+                                        if !arguments.is_empty() {
+                                            return Err(InterpreterError::InvalidOperation { message: "Array.len() takes 0 arguments".to_string() });
+                                        }
+                                        return Ok(Value::Integer(a.len() as i64));
+                                    }
+                                    _ => {
+                                        return Err(InterpreterError::InvalidOperation { message: format!("Unknown array method: {}", name) });
+                                    }
+                                }
+                            }
+                            _ => {
+                                if let Expr::Variable(namespace_name) = object.as_ref() {
+                                    format!("{}.{}", namespace_name, name)
+                                } else {
+                                    return Err(InterpreterError::InvalidOperation { message: "Complex function calls not yet supported".to_string() });
+                                }
+                            }
                         }
-                    },
+                    }
                     _ => {
-                        return Err(InterpreterError::InvalidOperation {
-                            message: "Complex function calls not yet supported".to_string(),
-                        });
+                        return Err(InterpreterError::InvalidOperation { message: "Complex function calls not yet supported".to_string() });
                     }
                 };
 
@@ -1204,5 +1251,50 @@ mod tests {
         let result = interpreter.execute_program(&program);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), 5);
+    }
+
+    #[test]
+    fn test_string_methods() {
+        let mut interpreter = Interpreter::new();
+        let program = Program {
+            statements: vec![
+                Statement::FunctionDeclaration {
+                    name: "main".to_string(),
+                    parameters: vec![],
+                    body: vec![
+                        Statement::Return { value: Some(Box::new(Expr::Call {
+                            callee: Box::new(Expr::Get { object: Box::new(Expr::Literal(Literal::String("  Abc ".to_string()))), name: "upper".to_string() }),
+                            arguments: vec![],
+                        })) } ],
+                    return_type: Some(Type::String),
+                    is_exported: false,
+                }
+            ],
+        };
+        let result = interpreter.execute_program(&program);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 0);
+    }
+
+    #[test]
+    fn test_array_len_method() {
+        let mut interpreter = Interpreter::new();
+        let program = Program {
+            statements: vec![
+                Statement::FunctionDeclaration {
+                    name: "main".to_string(),
+                    parameters: vec![],
+                    body: vec![
+                        Statement::LetDeclaration { name: "a".to_string(), initializer: Some(Expr::ArrayLiteral { elements: vec![Expr::Literal(Literal::Integer(1)), Expr::Literal(Literal::Integer(2)), Expr::Literal(Literal::Integer(3))] }), var_type: Some(Type::Array(Box::new(Type::Integer), 3)), is_exported: false },
+                        Statement::Return { value: Some(Box::new(Expr::Call { callee: Box::new(Expr::Get { object: Box::new(Expr::Variable("a".to_string())), name: "len".to_string() }), arguments: vec![] })) },
+                    ],
+                    return_type: Some(Type::Integer),
+                    is_exported: false,
+                }
+            ],
+        };
+        let result = interpreter.execute_program(&program);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 3);
     }
 }
