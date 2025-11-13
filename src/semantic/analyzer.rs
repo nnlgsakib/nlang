@@ -1,4 +1,4 @@
-use crate::ast::{Program, Statement, Expr, Type, Literal, BinaryOperator, WhenCase};
+use crate::ast::{Program, Statement, Expr, Type, Literal, BinaryOperator, WhenCase, MatchCase};
 use crate::std_lib::StdLib;
 use crate::lexer::Lexer;
 use crate::parser::Parser;
@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use std::fs;
 use super::error::SemanticError;
 use super::symbol::{Symbol, ModuleInfo};
+use super::type_inference::TypeInferenceEngine;
 
 pub struct SemanticAnalyzer {
     // For tracking nested scopes
@@ -19,9 +20,12 @@ pub struct SemanticAnalyzer {
     module_cache: HashMap<PathBuf, ModuleInfo>,
     // Current working directory for resolving relative imports
     current_dir: PathBuf,
+    // Advanced type inference engine
+    type_inference: TypeInferenceEngine,
 }
 
 impl SemanticAnalyzer {
+    #[allow(dead_code)]
     fn new() -> Self {
         Self::new_with_file_path(None)
     }
@@ -41,6 +45,7 @@ impl SemanticAnalyzer {
             std_lib: StdLib::new(),
             module_cache: HashMap::new(),
             current_dir,
+            type_inference: TypeInferenceEngine::new(),
         }
     }
     
@@ -163,7 +168,8 @@ impl SemanticAnalyzer {
                     // Enter a temporary scope with parameters to infer types used in returns
                     self.begin_scope();
                     for param in parameters {
-                        self.define_symbol(param.name.clone(), Symbol::Variable { var_type: param.param_type.clone() })?;
+                        let param_type = param.param_type.clone().unwrap_or(Type::Unknown);
+                        self.define_symbol(param.name.clone(), Symbol::Variable { var_type: param_type })?;
                     }
                     if let Some(inferred) = self.find_return_type_in_statements(body) {
                         // Update the function symbol with the inferred return type
@@ -233,28 +239,47 @@ impl SemanticAnalyzer {
                     None => None,
                 };
                 
-                // Use declared type if provided, otherwise infer from initializer or use default
+                // Use declared type if provided, otherwise infer from initializer using enhanced type inference
                 let final_var_type = if let Some(declared_type) = var_type {
                     // Validate that initializer type matches declared type if present
                     if let Some(ref init) = analyzed_initializer {
-                        let init_type = self.infer_type(init)?;
+                        // Use enhanced type inference for the initializer
+                        let init_type = self.type_inference.infer_expression_type(init);
+
                         if !self.are_types_compatible(&init_type, &declared_type) {
                             return Err(SemanticError {
                                 message: format!("Type mismatch: variable '{}' declared as {:?} but initializer is of type {:?}", name, declared_type, init_type),
                             });
                         }
-                        
+
                         // Validate literal bounds for integer types
                         if let Expr::Literal(literal) = init {
                             self.validate_literal_bounds(literal, &declared_type)?;
                         }
+
+                        // Store the inferred type in the type inference engine
+                        self.type_inference.set_variable_type(name.clone(), declared_type.clone());
                     }
                     declared_type
                 } else if let Some(ref init) = analyzed_initializer {
-                    // Infer type from initializer
-                    self.infer_type(init)?
+                    // Use enhanced type inference from initializer
+                    let inferred_type = self.type_inference.infer_expression_type(init);
+
+                    // Handle unknown types by falling back to basic inference
+                    let final_type = if inferred_type == Type::Unknown {
+                        self.infer_type(init)?
+                    } else {
+                        inferred_type
+                    };
+
+                    // Store the inferred type in the type inference engine
+                    self.type_inference.set_variable_type(name.clone(), final_type.clone());
+                    final_type
                 } else {
-                    Type::Integer // Default type for uninitialized variables
+                    // Default type for uninitialized variables
+                    let default_type = Type::Integer;
+                    self.type_inference.set_variable_type(name.clone(), default_type.clone());
+                    default_type
                 };
                 
                 self.define_symbol(name.clone(), Symbol::Variable { var_type: final_var_type.clone() })?;
@@ -267,84 +292,103 @@ impl SemanticAnalyzer {
                 })
             },
             Statement::FunctionDeclaration { name, parameters, body, return_type, is_exported } => {
-                let func_return_type = return_type.clone().unwrap_or(Type::Void);
-                
-                // If no explicit return type, try to infer it from return statements
-                let mut inferred_return_type = func_return_type.clone();
-                if return_type.is_none() {
-                    // Enter function scope to analyze return statements
-                    self.begin_scope();
-                    
-                    // Add parameters to the scope for analysis
-                    for param in &parameters {
-                        self.define_symbol(
-                            param.name.clone(), 
-                            Symbol::Variable { var_type: param.param_type.clone() }
-                        )?;
+                // Create mutable parameters for type inference
+                let mut inferred_parameters = parameters.clone();
+
+                // Enter function context for type inference
+                self.type_inference.enter_function_context(inferred_parameters.clone(), return_type.clone());
+
+                // First pass: Infer parameter types from usage in function body
+                if let Err(e) = self.type_inference.infer_function_parameter_types(&mut inferred_parameters, &body) {
+                    self.type_inference.exit_function_context();
+                    return Err(e);
+                }
+
+                // Resolve parameter types (use inferred if not explicitly declared)
+                for param in &mut inferred_parameters {
+                    let final_type = if let Some(explicit_type) = &param.param_type {
+                        explicit_type.clone()
+                    } else if let Some(inferred_type) = &param.inferred_type {
+                        inferred_type.clone()
+                    } else {
+                        Type::Unknown
+                    };
+
+                    // Set the final type for the parameter
+                    param.param_type = Some(final_type.clone());
+                    self.type_inference.set_variable_type(param.name.clone(), final_type);
+                }
+
+                // Infer return type if not explicitly declared
+                let inferred_return_type = if return_type.is_none() {
+                    if let Some(inferred) = self.type_inference.infer_function_return_type(&body) {
+                        inferred
+                    } else {
+                        Type::Void
                     }
-                    
-                    // Look for return statements to infer type
-                    if let Some(return_type) = self.find_return_type_in_statements(&body) {
-                        inferred_return_type = return_type;
-                    }
-                    
-                    // Exit the temporary scope
+                } else {
+                    return_type.clone().unwrap()
+                };
+
+                // Set current function context
+                let previous_return_type = self.current_function_return_type.clone();
+                self.current_function_return_type = Some(inferred_return_type.clone());
+
+                // Enter function scope for actual analysis
+                self.begin_scope();
+
+                // Add parameters to the scope with their resolved types
+                for param in &inferred_parameters {
+                    let param_type = param.param_type.as_ref().unwrap();
+                    self.define_symbol(
+                        param.name.clone(),
+                        Symbol::Variable { var_type: param_type.clone() }
+                    )?;
+                }
+
+                // Analyze function body
+                let mut analyzed_body = Vec::new();
+
+                for stmt in body {
+                    analyzed_body.push(self.analyze_statement(stmt)?);
+                }
+
+                // Check if non-void function has return statement (recursively)
+                let has_return = self.has_return_statement(&analyzed_body);
+                if inferred_return_type != Type::Void && !has_return {
+                    // Exit function context and scope before returning error
+                    self.type_inference.exit_function_context();
                     self.end_scope();
-                    
+                    self.current_function_return_type = previous_return_type;
+
+                    return Err(SemanticError {
+                        message: format!("Function '{}' with return type {:?} must have a return statement", name, inferred_return_type),
+                    });
+                }
+
+                // Update the return type check to work with inferred types
+                // If we inferred a non-void type but the function was analyzed assuming void,
+                // we need to re-analyze with the correct return type
+                if return_type.is_none() && inferred_return_type != Type::Void {
                     // Update the function's return type in the symbol table
-                    if inferred_return_type != Type::Void {
-                        // Update the function symbol with the inferred return type
-                        // We need to find and update the symbol in the correct scope
-                        for scope in self.scopes.iter_mut().rev() {
-                            if let Some(Symbol::Function { parameters: _existing_params, .. }) = scope.get_mut(&name) {
-                                // Update the return type
-                                *scope.get_mut(&name).unwrap() = Symbol::Function {
-                                    return_type: inferred_return_type.clone(),
-                                    parameters: parameters.clone(),
-                                };
+                    for scope in self.scopes.iter_mut().rev() {
+                        if let Some(sym) = scope.get_mut(&name) {
+                            if let Symbol::Function { return_type: ret_type, .. } = sym {
+                                *ret_type = inferred_return_type.clone();
                                 break;
                             }
                         }
                     }
                 }
-                
-                // Set current function context
-                let previous_return_type = self.current_function_return_type.clone();
-                self.current_function_return_type = Some(inferred_return_type.clone());
-                
-                // Enter function scope for actual analysis
-                self.begin_scope();
-                
-                // Add parameters to the scope
-                for param in &parameters {
-                    self.define_symbol(
-                        param.name.clone(), 
-                        Symbol::Variable { var_type: param.param_type.clone() }
-                    )?;
-                }
-                
-                // Analyze function body
-                let mut analyzed_body = Vec::new();
-                
-                for stmt in body {
-                    analyzed_body.push(self.analyze_statement(stmt)?);
-                }
-                
-                // Check if non-void function has return statement (recursively)
-                let has_return = self.has_return_statement(&analyzed_body);
-                if inferred_return_type != Type::Void && !has_return {
-                    return Err(SemanticError {
-                        message: format!("Function '{}' with return type {:?} must have a return statement", name, inferred_return_type),
-                    });
-                }
-                
+
                 // Exit function scope and restore previous context
                 self.end_scope();
                 self.current_function_return_type = previous_return_type;
-                
+                self.type_inference.exit_function_context();
+
                 Ok(Statement::FunctionDeclaration {
                     name,
-                    parameters,
+                    parameters: inferred_parameters,
                     body: analyzed_body,
                     return_type: Some(inferred_return_type),
                     is_exported,
@@ -451,7 +495,7 @@ impl SemanticAnalyzer {
                         (None, Type::Void) => {}, // void return with no value is OK
                         (Some(val), expected_type) => {
                             let actual_type = self.infer_type(val)?;
-                            if actual_type != *expected_type {
+                            if !self.are_types_compatible(&actual_type, expected_type) {
                                 return Err(SemanticError {
                                     message: format!(
                                         "Return type mismatch: expected {:?}, got {:?}",
@@ -766,9 +810,9 @@ impl SemanticAnalyzer {
                                 });
                             }
 
-                            for (i, arg) in analyzed_arguments.iter().enumerate() {
-                                let arg_type = self.infer_type(arg)?;
-                                let param_type = &builtin_func.parameters[i];
+                        for (i, arg) in analyzed_arguments.iter().enumerate() {
+                            let mut arg_type = self.infer_type(arg)?;
+                            let param_type = &builtin_func.parameters[i];
 
                                 // Special case for println and print - they can accept any type
                                 if func_name == "println" || func_name == "print" {
@@ -777,13 +821,19 @@ impl SemanticAnalyzer {
                                 }
 
                                 // Special handling for Void types - they might be function calls whose return types
-                                // haven't been inferred yet. Allow them to pass type checking for now.
+                                // haven't been inferred yet. Use type inference to resolve them.
                                 if arg_type == Type::Void {
-                                    // Skip type checking for Void arguments - they might be function calls
-                                    // whose return types will be inferred later during execution
-                                    continue;
+                                    let inferred_arg_type = self.infer_type(arg)?;
+                                    if inferred_arg_type != Type::Void {
+                                        arg_type = inferred_arg_type;
+                                    } else {
+                                        continue;
+                                    }
                                 }
 
+                                if arg_type == Type::Unknown {
+                                    continue;
+                                }
                                 if arg_type != *param_type {
                                     return Err(SemanticError {
                                         message: format!(
@@ -818,7 +868,7 @@ impl SemanticAnalyzer {
 
                         for (i, arg) in analyzed_arguments.iter().enumerate() {
                             let arg_type = self.infer_type(arg)?;
-                            let param_type = &parameters[i].param_type;
+                            let param_type = &parameters[i].param_type.as_ref().unwrap_or(&Type::Unknown);
                             if !self.are_types_compatible(&arg_type, param_type) {
                                 return Err(SemanticError {
                                     message: format!(
@@ -849,9 +899,10 @@ impl SemanticAnalyzer {
                 
                 // Add parameters to the scope
                 for param in &parameters {
+                    let param_type = param.param_type.clone().unwrap_or(Type::Unknown);
                     self.define_symbol(
-                        param.name.clone(), 
-                        Symbol::Variable { var_type: param.param_type.clone() }
+                        param.name.clone(),
+                        Symbol::Variable { var_type: param_type }
                     )?;
                 }
                 
@@ -915,7 +966,7 @@ impl SemanticAnalyzer {
                 let var_symbol = self.get_symbol(&name)?;
                 if let Symbol::Variable { var_type } = var_symbol {
                     let value_type = self.infer_type(&analyzed_value)?;
-                    if var_type != value_type {
+                    if !self.are_types_compatible(&var_type, &value_type) {
                         return Err(SemanticError {
                             message: format!("Type mismatch in assignment: expected {:?}, got {:?}", var_type, value_type),
                         });
@@ -995,6 +1046,52 @@ impl SemanticAnalyzer {
                 
                 Ok(Expr::ArrayLiteral { elements: analyzed_elements })
             },
+            // Advanced expression types - not yet fully implemented
+            Expr::Tuple { elements } => {
+                let mut analyzed_elements = Vec::new();
+                for element in elements {
+                    analyzed_elements.push(self.analyze_expr(element)?);
+                }
+                Ok(Expr::Tuple { elements: analyzed_elements })
+            },
+            Expr::IfExpression { condition, then_branch, else_branch } => {
+                let analyzed_condition = self.analyze_expr(*condition)?;
+                let analyzed_then = self.analyze_expr(*then_branch)?;
+                let analyzed_else = self.analyze_expr(*else_branch)?;
+
+                // Condition must be boolean
+                let condition_type = self.infer_type(&analyzed_condition)?;
+                if condition_type != Type::Boolean {
+                    return Err(SemanticError {
+                        message: format!("If condition must be boolean, got {:?}", condition_type),
+                    });
+                }
+
+                Ok(Expr::IfExpression {
+                    condition: Box::new(analyzed_condition),
+                    then_branch: Box::new(analyzed_then),
+                    else_branch: Box::new(analyzed_else),
+                })
+            },
+            Expr::Match { expression, cases } => {
+                let analyzed_expression = self.analyze_expr(*expression)?;
+                let mut analyzed_cases = Vec::new();
+
+                for case in cases {
+                    // Analyze pattern and body expression
+                    let analyzed_body = self.analyze_expr(*case.body)?;
+                    let analyzed_pattern = self.analyze_pattern(&case.pattern)?;
+                    analyzed_cases.push(MatchCase {
+                        pattern: analyzed_pattern,
+                        body: Box::new(analyzed_body),
+                    });
+                }
+
+                Ok(Expr::Match {
+                    expression: Box::new(analyzed_expression),
+                    cases: analyzed_cases,
+                })
+            },
         }
     }
     
@@ -1043,16 +1140,16 @@ impl SemanticAnalyzer {
                         } else if left_type == Type::Float || right_type == Type::Float ||
                                   left_type == Type::F32 || right_type == Type::F32 ||
                                   left_type == Type::F64 || right_type == Type::F64 {
-                            if (left_type == Type::Integer || left_type == Type::I8 || left_type == Type::I16 || left_type == Type::I32 || left_type == Type::I64 || left_type == Type::ISize || left_type == Type::U8 || left_type == Type::U16 || left_type == Type::U32 || left_type == Type::U64 || left_type == Type::USize || left_type == Type::Float || left_type == Type::F32 || left_type == Type::F64) &&
-                               (right_type == Type::Integer || right_type == Type::I8 || right_type == Type::I16 || right_type == Type::I32 || right_type == Type::I64 || right_type == Type::ISize || right_type == Type::U8 || right_type == Type::U16 || right_type == Type::U32 || right_type == Type::U64 || right_type == Type::USize || right_type == Type::Float || right_type == Type::F32 || right_type == Type::F64) {
+                            if (left_type == Type::Unknown || left_type == Type::Integer || left_type == Type::I8 || left_type == Type::I16 || left_type == Type::I32 || left_type == Type::I64 || left_type == Type::ISize || left_type == Type::U8 || left_type == Type::U16 || left_type == Type::U32 || left_type == Type::U64 || left_type == Type::USize || left_type == Type::Float || left_type == Type::F32 || left_type == Type::F64) &&
+                               (right_type == Type::Unknown || right_type == Type::Integer || right_type == Type::I8 || right_type == Type::I16 || right_type == Type::I32 || right_type == Type::I64 || right_type == Type::ISize || right_type == Type::U8 || right_type == Type::U16 || right_type == Type::U32 || right_type == Type::U64 || right_type == Type::USize || right_type == Type::Float || right_type == Type::F32 || right_type == Type::F64) {
                                 Ok(Type::F64)
                             } else {
                                 Err(SemanticError {
                                     message: format!("Cannot perform arithmetic on {:?} and {:?}", left_type, right_type),
                                 })
                             }
-                        } else if (left_type == Type::Integer || left_type == Type::I8 || left_type == Type::I16 || left_type == Type::I32 || left_type == Type::I64 || left_type == Type::ISize || left_type == Type::U8 || left_type == Type::U16 || left_type == Type::U32 || left_type == Type::U64 || left_type == Type::USize) && 
-                                  (right_type == Type::Integer || right_type == Type::I8 || right_type == Type::I16 || right_type == Type::I32 || right_type == Type::I64 || right_type == Type::ISize || right_type == Type::U8 || right_type == Type::U16 || right_type == Type::U32 || right_type == Type::U64 || right_type == Type::USize) {
+                        } else if (left_type == Type::Unknown || left_type == Type::Integer || left_type == Type::I8 || left_type == Type::I16 || left_type == Type::I32 || left_type == Type::I64 || left_type == Type::ISize || left_type == Type::U8 || left_type == Type::U16 || left_type == Type::U32 || left_type == Type::U64 || left_type == Type::USize) && 
+                                  (right_type == Type::Unknown || right_type == Type::Integer || right_type == Type::I8 || right_type == Type::I16 || right_type == Type::I32 || right_type == Type::I64 || right_type == Type::ISize || right_type == Type::U8 || right_type == Type::U16 || right_type == Type::U32 || right_type == Type::U64 || right_type == Type::USize) {
                             // For integer types, preserve the more specific type if both are the same
                             if left_type == right_type {
                                 Ok(left_type)
@@ -1070,16 +1167,16 @@ impl SemanticAnalyzer {
                         if left_type == Type::Float || right_type == Type::Float ||
                            left_type == Type::F32 || right_type == Type::F32 ||
                            left_type == Type::F64 || right_type == Type::F64 {
-                            if (left_type == Type::Integer || left_type == Type::I8 || left_type == Type::I16 || left_type == Type::I32 || left_type == Type::I64 || left_type == Type::ISize || left_type == Type::U8 || left_type == Type::U16 || left_type == Type::U32 || left_type == Type::U64 || left_type == Type::USize || left_type == Type::Float || left_type == Type::F32 || left_type == Type::F64) &&
-                               (right_type == Type::Integer || right_type == Type::I8 || right_type == Type::I16 || right_type == Type::I32 || right_type == Type::I64 || right_type == Type::ISize || right_type == Type::U8 || right_type == Type::U16 || right_type == Type::U32 || right_type == Type::U64 || right_type == Type::USize || right_type == Type::Float || right_type == Type::F32 || right_type == Type::F64) {
+                            if (left_type == Type::Unknown || left_type == Type::Integer || left_type == Type::I8 || left_type == Type::I16 || left_type == Type::I32 || left_type == Type::I64 || left_type == Type::ISize || left_type == Type::U8 || left_type == Type::U16 || left_type == Type::U32 || left_type == Type::U64 || left_type == Type::USize || left_type == Type::Float || left_type == Type::F32 || left_type == Type::F64) &&
+                               (right_type == Type::Unknown || right_type == Type::Integer || right_type == Type::I8 || right_type == Type::I16 || right_type == Type::I32 || right_type == Type::I64 || right_type == Type::ISize || right_type == Type::U8 || right_type == Type::U16 || right_type == Type::U32 || right_type == Type::U64 || right_type == Type::USize || right_type == Type::Float || right_type == Type::F32 || right_type == Type::F64) {
                                 Ok(Type::F64)
                             } else {
                                 Err(SemanticError {
                                     message: format!("Cannot perform arithmetic on {:?} and {:?}", left_type, right_type),
                                 })
                             }
-                        } else if (left_type == Type::Integer || left_type == Type::I8 || left_type == Type::I16 || left_type == Type::I32 || left_type == Type::I64 || left_type == Type::ISize || left_type == Type::U8 || left_type == Type::U16 || left_type == Type::U32 || left_type == Type::U64 || left_type == Type::USize) && 
-                                  (right_type == Type::Integer || right_type == Type::I8 || right_type == Type::I16 || right_type == Type::I32 || right_type == Type::I64 || right_type == Type::ISize || right_type == Type::U8 || right_type == Type::U16 || right_type == Type::U32 || right_type == Type::U64 || right_type == Type::USize) {
+                        } else if (left_type == Type::Unknown || left_type == Type::Integer || left_type == Type::I8 || left_type == Type::I16 || left_type == Type::I32 || left_type == Type::I64 || left_type == Type::ISize || left_type == Type::U8 || left_type == Type::U16 || left_type == Type::U32 || left_type == Type::U64 || left_type == Type::USize) && 
+                                  (right_type == Type::Unknown || right_type == Type::Integer || right_type == Type::I8 || right_type == Type::I16 || right_type == Type::I32 || right_type == Type::I64 || right_type == Type::ISize || right_type == Type::U8 || right_type == Type::U16 || right_type == Type::U32 || right_type == Type::U64 || right_type == Type::USize) {
                             // For integer types, preserve the more specific type if both are the same
                             if left_type == right_type {
                                 Ok(left_type)
@@ -1094,8 +1191,8 @@ impl SemanticAnalyzer {
                     },
                     BinaryOperator::Slash => {
                         // Division always returns float, even for integer operands
-                        if (left_type == Type::Integer || left_type == Type::I8 || left_type == Type::I16 || left_type == Type::I32 || left_type == Type::I64 || left_type == Type::ISize || left_type == Type::U8 || left_type == Type::U16 || left_type == Type::U32 || left_type == Type::U64 || left_type == Type::USize || left_type == Type::Float || left_type == Type::F32 || left_type == Type::F64) &&
-                           (right_type == Type::Integer || right_type == Type::I8 || right_type == Type::I16 || right_type == Type::I32 || right_type == Type::I64 || right_type == Type::ISize || right_type == Type::U8 || right_type == Type::U16 || right_type == Type::U32 || right_type == Type::U64 || right_type == Type::USize || right_type == Type::Float || right_type == Type::F32 || right_type == Type::F64) {
+                        if (left_type == Type::Unknown || left_type == Type::Integer || left_type == Type::I8 || left_type == Type::I16 || left_type == Type::I32 || left_type == Type::I64 || left_type == Type::ISize || left_type == Type::U8 || left_type == Type::U16 || left_type == Type::U32 || left_type == Type::U64 || left_type == Type::USize || left_type == Type::Float || left_type == Type::F32 || left_type == Type::F64) &&
+                           (right_type == Type::Unknown || right_type == Type::Integer || right_type == Type::I8 || right_type == Type::I16 || right_type == Type::I32 || right_type == Type::I64 || right_type == Type::ISize || right_type == Type::U8 || right_type == Type::U16 || right_type == Type::U32 || right_type == Type::U64 || right_type == Type::USize || right_type == Type::Float || right_type == Type::F32 || right_type == Type::F64) {
                             Ok(Type::F64)
                         } else {
                             Err(SemanticError {
@@ -1105,8 +1202,8 @@ impl SemanticAnalyzer {
                     },
                     BinaryOperator::Percent => {
                         // Modulo only works with integers
-                        if (left_type == Type::Integer || left_type == Type::I8 || left_type == Type::I16 || left_type == Type::I32 || left_type == Type::I64 || left_type == Type::ISize || left_type == Type::U8 || left_type == Type::U16 || left_type == Type::U32 || left_type == Type::U64 || left_type == Type::USize) && 
-                           (right_type == Type::Integer || right_type == Type::I8 || right_type == Type::I16 || right_type == Type::I32 || right_type == Type::I64 || right_type == Type::ISize || right_type == Type::U8 || right_type == Type::U16 || right_type == Type::U32 || right_type == Type::U64 || right_type == Type::USize) {
+                        if (left_type == Type::Unknown || left_type == Type::Integer || left_type == Type::I8 || left_type == Type::I16 || left_type == Type::I32 || left_type == Type::I64 || left_type == Type::ISize || left_type == Type::U8 || left_type == Type::U16 || left_type == Type::U32 || left_type == Type::U64 || left_type == Type::USize) && 
+                           (right_type == Type::Unknown || right_type == Type::Integer || right_type == Type::I8 || right_type == Type::I16 || right_type == Type::I32 || right_type == Type::I64 || right_type == Type::ISize || right_type == Type::U8 || right_type == Type::U16 || right_type == Type::U32 || right_type == Type::U64 || right_type == Type::USize) {
                             // For integer types, preserve the more specific type if both are the same
                             if left_type == right_type {
                                 Ok(left_type)
@@ -1121,6 +1218,9 @@ impl SemanticAnalyzer {
                     },
                     BinaryOperator::EqualEqual | BinaryOperator::NotEqual => {
                         // Equality comparison: operands must be compatible types
+                        if left_type == Type::Unknown || right_type == Type::Unknown {
+                            return Ok(Type::Boolean);
+                        }
                         if left_type == right_type || 
                            (left_type == Type::Integer && right_type == Type::Float) ||
                            (left_type == Type::Float && right_type == Type::Integer) ||
@@ -1182,9 +1282,9 @@ impl SemanticAnalyzer {
                     BinaryOperator::Greater | BinaryOperator::GreaterEqual => {
                         // Relational comparison: only numeric types
                         if (
-                            left_type == Type::Integer || left_type == Type::I8 || left_type == Type::I16 || left_type == Type::I32 || left_type == Type::I64 || left_type == Type::ISize || left_type == Type::U8 || left_type == Type::U16 || left_type == Type::U32 || left_type == Type::U64 || left_type == Type::USize || left_type == Type::Float || left_type == Type::F32 || left_type == Type::F64
+                            left_type == Type::Unknown || left_type == Type::Integer || left_type == Type::I8 || left_type == Type::I16 || left_type == Type::I32 || left_type == Type::I64 || left_type == Type::ISize || left_type == Type::U8 || left_type == Type::U16 || left_type == Type::U32 || left_type == Type::U64 || left_type == Type::USize || left_type == Type::Float || left_type == Type::F32 || left_type == Type::F64
                         ) && (
-                            right_type == Type::Integer || right_type == Type::I8 || right_type == Type::I16 || right_type == Type::I32 || right_type == Type::I64 || right_type == Type::ISize || right_type == Type::U8 || right_type == Type::U16 || right_type == Type::U32 || right_type == Type::U64 || right_type == Type::USize || right_type == Type::Float || right_type == Type::F32 || right_type == Type::F64
+                            right_type == Type::Unknown || right_type == Type::Integer || right_type == Type::I8 || right_type == Type::I16 || right_type == Type::I32 || right_type == Type::I64 || right_type == Type::ISize || right_type == Type::U8 || right_type == Type::U16 || right_type == Type::U32 || right_type == Type::U64 || right_type == Type::USize || right_type == Type::Float || right_type == Type::F32 || right_type == Type::F64
                         ) {
                             Ok(Type::Boolean)
                         } else {
@@ -1532,6 +1632,10 @@ impl SemanticAnalyzer {
         Ok(())
     }
 
+    fn analyze_pattern(&self, pattern: &crate::ast::Pattern) -> Result<crate::ast::Pattern, SemanticError> {
+        Ok(pattern.clone())
+    }
+
     fn validate_main_function(&self) -> Result<(), SemanticError> {
         // Check if main function exists
         match self.get_symbol("main") {
@@ -1563,73 +1667,42 @@ impl SemanticAnalyzer {
     
     /// Check if two types are compatible for assignment/initialization
     fn are_types_compatible(&self, type1: &Type, type2: &Type) -> bool {
+        if *type1 == Type::Unknown || *type2 == Type::Unknown {
+            return true;
+        }
         // Same types are always compatible
         if type1 == type2 {
             return true;
         }
-        
-        // Integer is compatible with all signed integer types (widening conversion)
-        if *type1 == Type::Integer {
-            match *type2 {
-                Type::I8 | Type::I16 | Type::I32 | Type::I64 | Type::ISize => return true,
-                _ => ()
-            }
-        }
-        
-        // All signed integer types are compatible with Integer (narrowing conversion)
-        if *type2 == Type::Integer {
-            match *type1 {
-                Type::I8 | Type::I16 | Type::I32 | Type::I64 | Type::ISize => return true,
-                _ => ()
-            }
-        }
-        
-        // Integer can be assigned to unsigned integer types if value is non-negative
-        if *type1 == Type::Integer {
-            match *type2 {
-                Type::U8 | Type::U16 | Type::U32 | Type::U64 | Type::USize => return true,
-                _ => ()
-            }
-        }
-        
-        // Unsigned integer types can be assigned to Integer (widening conversion)
-        if *type2 == Type::Integer {
-            match *type1 {
-                Type::U8 | Type::U16 | Type::U32 | Type::U64 | Type::USize => return true,
-                _ => ()
-            }
-        }
-        
-        // Integer can be assigned to Float types (implicit conversion)
-        if *type1 == Type::Integer && (*type2 == Type::Float || *type2 == Type::F32 || *type2 == Type::F64) {
+
+        // Helper function to check if a type is any integer type
+        let is_integer_type = |t: &Type| {
+            matches!(t, Type::Integer | Type::I8 | Type::I16 | Type::I32 | Type::I64 | Type::ISize |
+                     Type::U8 | Type::U16 | Type::U32 | Type::U64 | Type::USize)
+        };
+
+        // All integer types are compatible with each other (with potential promotion)
+        if is_integer_type(type1) && is_integer_type(type2) {
             return true;
         }
-        
-        // Signed integer types can be assigned to Float types (implicit conversion)
-        if *type2 == Type::Float || *type2 == Type::F32 || *type2 == Type::F64 {
-            match *type1 {
-                Type::I8 | Type::I16 | Type::I32 | Type::I64 | Type::ISize => return true,
-                _ => ()
-            }
-        }
-        
-        // Unsigned integer types can be assigned to Float types (implicit conversion)
-        if *type2 == Type::Float || *type2 == Type::F32 || *type2 == Type::F64 {
-            match *type1 {
-                Type::U8 | Type::U16 | Type::U32 | Type::U64 | Type::USize => return true,
-                _ => ()
+
+        // Any integer type can be converted to float types
+        if is_integer_type(type1) {
+            if matches!(type2, Type::Float | Type::F32 | Type::F64) {
+                return true;
             }
         }
 
-        // Allow assigning f64 to f32 (narrowing) and legacy Float to either
-        if (*type1 == Type::F64 && *type2 == Type::F32) || (*type1 == Type::Float && (*type2 == Type::F32 || *type2 == Type::F64)) {
+        // Float types can be converted between each other (with potential precision loss)
+        if matches!(type1, Type::Float | Type::F32 | Type::F64) && matches!(type2, Type::Float | Type::F32 | Type::F64) {
             return true;
         }
-        // Allow assigning f32 to f64 (widening)
-        if *type1 == Type::F32 && *type2 == Type::F64 {
-            return true;
+
+        // Array type compatibility - inner types must be compatible and sizes must match
+        if let (Type::Array(inner1, size1), Type::Array(inner2, size2)) = (type1, type2) {
+            return size1 == size2 && self.are_types_compatible(inner1, inner2);
         }
-        
+
         false
     }
 

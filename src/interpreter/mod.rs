@@ -628,6 +628,9 @@ impl Interpreter {
                                 Value::Array(_) => Err(InterpreterError::InvalidOperation {
                                     message: "Cannot convert array to string".to_string(),
                                 }),
+                                Value::Lambda { .. } => Err(InterpreterError::InvalidOperation {
+                                    message: "Cannot convert lambda to string".to_string(),
+                                }),
                             }
                         }
                         "int" => {
@@ -652,6 +655,9 @@ impl Interpreter {
                                 Value::Array(_) => Err(InterpreterError::InvalidOperation {
                                     message: "Cannot convert array to integer".to_string(),
                                 }),
+                                Value::Lambda { .. } => Err(InterpreterError::InvalidOperation {
+                                    message: "Cannot convert lambda to integer".to_string(),
+                                }),
                             }
                         }
                         "float" => {
@@ -675,6 +681,9 @@ impl Interpreter {
                                 }
                                 Value::Array(_) => Err(InterpreterError::InvalidOperation {
                                     message: "Cannot convert array to float".to_string(),
+                                }),
+                                Value::Lambda { .. } => Err(InterpreterError::InvalidOperation {
+                                    message: "Cannot convert lambda to float".to_string(),
                                 }),
                             }
                         }
@@ -876,7 +885,13 @@ impl Interpreter {
         match op {
             BinaryOperator::Plus => {
                 match (left, right) {
-                    (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a + b)),
+                    (Value::Integer(a), Value::Integer(b)) => {
+                        if let Some(sum) = a.checked_add(*b) {
+                            Ok(Value::Integer(sum))
+                        } else {
+                            Ok(Value::Float(*a as f64 + *b as f64))
+                        }
+                    }
                     (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a + b)),
                     (Value::Integer(a), Value::Float(b)) => Ok(Value::Float(*a as f64 + b)),
                     (Value::Float(a), Value::Integer(b)) => Ok(Value::Float(a + *b as f64)),
@@ -889,7 +904,13 @@ impl Interpreter {
             }
             BinaryOperator::Minus => {
                 match (left, right) {
-                    (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a - b)),
+                    (Value::Integer(a), Value::Integer(b)) => {
+                        if let Some(diff) = a.checked_sub(*b) {
+                            Ok(Value::Integer(diff))
+                        } else {
+                            Ok(Value::Float(*a as f64 - *b as f64))
+                        }
+                    }
                     (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a - b)),
                     (Value::Integer(a), Value::Float(b)) => Ok(Value::Float(*a as f64 - b)),
                     (Value::Float(a), Value::Integer(b)) => Ok(Value::Float(a - *b as f64)),
@@ -901,7 +922,13 @@ impl Interpreter {
             }
             BinaryOperator::Star => {
                 match (left, right) {
-                    (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a * b)),
+                    (Value::Integer(a), Value::Integer(b)) => {
+                        if let Some(prod) = a.checked_mul(*b) {
+                            Ok(Value::Integer(prod))
+                        } else {
+                            Ok(Value::Float(*a as f64 * *b as f64))
+                        }
+                    }
                     (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a * b)),
                     (Value::Integer(a), Value::Float(b)) => Ok(Value::Float(*a as f64 * b)),
                     (Value::Float(a), Value::Integer(b)) => Ok(Value::Float(a * *b as f64)),

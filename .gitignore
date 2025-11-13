@@ -5,3 +5,5 @@ nlang-syntax/
 mlc/
 web/
 web-b/
+.vscode/
+.claude/

@@ -217,15 +217,15 @@ impl<'a> Parser<'a> {
                 self.consume(&TokenType::Identifier(param_name.clone()), "Expected parameter name")?;
                 
                 let param_type = if self.match_token(&TokenType::Colon) {
-                    self.parse_type()?
+                    Some(self.parse_type()?)
                 } else {
-                    // For now, default to Integer if not specified
-                    Type::Integer
+                    None
                 };
 
                 parameters.push(Parameter {
                     name: param_name,
                     param_type,
+                    inferred_type: None,
                 });
                 
                 if !self.match_token(&TokenType::Comma) {

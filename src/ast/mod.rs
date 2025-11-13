@@ -5,7 +5,7 @@ pub struct Program {
     pub statements: Vec<Statement>,
 }
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub enum Statement {
     Expression(Expr),
     LetDeclaration {
@@ -69,16 +69,17 @@ pub enum Statement {
     },
 }
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct WhenCase {
     pub values: Vec<Expr>,
     pub body: Box<Statement>,
 }
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct Parameter {
     pub name: String,
-    pub param_type: Type,
+    pub param_type: Option<Type>,
+    pub inferred_type: Option<Type>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
@@ -102,9 +103,17 @@ pub enum Type {
     Array(Box<Type>, usize),
     Function { params: Vec<Type>, return_type: Box<Type> },
     Void,
+    // Advanced type system features
+    Unknown,           // For type inference
+    Infer,            // Placeholder for type inference
+    Generic(String),   // Generic type parameter
+    Option(Box<Type>), // Optional type
+    Result(Box<Type>, Box<Type>), // Result<T, E>
+    Union(Vec<Type>),  // Union type
+    Tuple(Vec<Type>),  // Tuple type
 }
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub enum Expr {
     Literal(Literal),
     Variable(String),
@@ -151,9 +160,35 @@ pub enum Expr {
     ArrayLiteral {
         elements: Vec<Expr>,
     },
+    Tuple {
+        elements: Vec<Expr>,
+    },
+    IfExpression {
+        condition: Box<Expr>,
+        then_branch: Box<Expr>,
+        else_branch: Box<Expr>,
+    },
+    Match {
+        expression: Box<Expr>,
+        cases: Vec<MatchCase>,
+    },
 }
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct MatchCase {
+    pub pattern: Pattern,
+    pub body: Box<Expr>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub enum Pattern {
+    Literal(Literal),
+    Variable(String),
+    Tuple(Vec<Pattern>),
+    Wildcard,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub enum Literal {
     Integer(i64),
     I8(i8),
@@ -172,7 +207,7 @@ pub enum Literal {
     Null,
 }
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub enum BinaryOperator {
     Plus,
     Minus,
@@ -189,7 +224,7 @@ pub enum BinaryOperator {
     Or,
 }
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub enum UnaryOperator {
     Negate,
     Not,
@@ -221,6 +256,20 @@ impl fmt::Display for Type {
                 write!(f, "fn({}) -> {}", param_types.join(", "), return_type)
             }
             Type::Void => write!(f, "void"),
+            // Advanced types
+            Type::Unknown => write!(f, "unknown"),
+            Type::Infer => write!(f, "_"),
+            Type::Generic(name) => write!(f, "{}", name),
+            Type::Option(inner) => write!(f, "Option<{}>", inner),
+            Type::Result(ok, err) => write!(f, "Result<{}, {}>", ok, err),
+            Type::Union(types) => {
+                let type_strings: Vec<String> = types.iter().map(|t| format!("{}", t)).collect();
+                write!(f, "Union<{}>", type_strings.join(" | "))
+            },
+            Type::Tuple(types) => {
+                let type_strings: Vec<String> = types.iter().map(|t| format!("{}", t)).collect();
+                write!(f, "({})", type_strings.join(", "))
+            },
         }
     }
 }

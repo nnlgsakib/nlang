@@ -110,7 +110,7 @@ impl Lexer {
                     self.add_token(TokenType::Arrow);
                 } else if self.peek().is_ascii_digit() {
                     // This is a negative number literal, parse as number with negative sign
-                    self.number_with_sign(true)
+                    self.number_with_sign(true)?
                 } else {
                     self.add_token(TokenType::Minus)
                 }
@@ -182,10 +182,10 @@ impl Lexer {
                         self.identifier();
                     } else {
                         // This is a regular number (possibly with type suffix)
-                        self.number()
+                        self.number()?
                     }
                 } else {
-                    self.number()
+                    self.number()?
                 }
             }
             'a'..='z' | 'A'..='Z' | '_' => self.identifier(),
@@ -237,11 +237,11 @@ impl Lexer {
         self.add_token(token_type);
     }
 
-    fn number(&mut self) {
+    fn number(&mut self) -> Result<(), LexerError> {
         self.number_with_sign(false)
     }
 
-    fn number_with_sign(&mut self, is_negative: bool) {
+    fn number_with_sign(&mut self, is_negative: bool) -> Result<(), LexerError> {
         // If this is a negative number, we need to advance past the minus sign first
         if is_negative {
             self.advance(); // consume the minus sign
@@ -290,45 +290,45 @@ impl Lexer {
 
             // Handle all integer type suffixes
             if remaining.starts_with("i8") {
-                self.parse_typed_integer::<i8>(&text_str, is_negative, "i8", TokenType::I8Literal);
-                return;
+                self.parse_typed_integer::<i8>(&text_str, is_negative, "i8", TokenType::I8Literal)?;
+                return Ok(());
             } else if remaining.starts_with("i16") {
-                self.parse_typed_integer::<i16>(&text_str, is_negative, "i16", TokenType::I16Literal);
-                return;
+                self.parse_typed_integer::<i16>(&text_str, is_negative, "i16", TokenType::I16Literal)?;
+                return Ok(());
             } else if remaining.starts_with("i32") {
-                self.parse_typed_integer::<i32>(&text_str, is_negative, "i32", TokenType::I32Literal);
-                return;
+                self.parse_typed_integer::<i32>(&text_str, is_negative, "i32", TokenType::I32Literal)?;
+                return Ok(());
             } else if remaining.starts_with("i64") {
-                self.parse_typed_integer::<i64>(&text_str, is_negative, "i64", TokenType::I64Literal);
-                return;
+                self.parse_typed_integer::<i64>(&text_str, is_negative, "i64", TokenType::I64Literal)?;
+                return Ok(());
             } else if remaining.starts_with("isize") {
                 self.parse_typed_integer::<isize>(
                     &text_str,
                     is_negative,
                     "isize",
                     TokenType::ISizeLiteral,
-                );
-                return;
+                )?;
+                return Ok(());
             } else if remaining.starts_with("u8") {
-                self.parse_typed_integer::<u8>(&text_str, is_negative, "u8", TokenType::U8Literal);
-                return;
+                self.parse_typed_integer::<u8>(&text_str, is_negative, "u8", TokenType::U8Literal)?;
+                return Ok(());
             } else if remaining.starts_with("u16") {
-                self.parse_typed_integer::<u16>(&text_str, is_negative, "u16", TokenType::U16Literal);
-                return;
+                self.parse_typed_integer::<u16>(&text_str, is_negative, "u16", TokenType::U16Literal)?;
+                return Ok(());
             } else if remaining.starts_with("u32") {
-                self.parse_typed_integer::<u32>(&text_str, is_negative, "u32", TokenType::U32Literal);
-                return;
+                self.parse_typed_integer::<u32>(&text_str, is_negative, "u32", TokenType::U32Literal)?;
+                return Ok(());
             } else if remaining.starts_with("u64") {
-                self.parse_typed_integer::<u64>(&text_str, is_negative, "u64", TokenType::U64Literal);
-                return;
+                self.parse_typed_integer::<u64>(&text_str, is_negative, "u64", TokenType::U64Literal)?;
+                return Ok(());
             } else if remaining.starts_with("usize") {
                 self.parse_typed_integer::<usize>(
                     &text_str,
                     is_negative,
                     "usize",
                     TokenType::USizeLiteral,
-                );
-                return;
+                )?;
+                return Ok(());
             }
         }
 
@@ -342,8 +342,10 @@ impl Lexer {
             match parsed_text.parse::<f64>() {
                 Ok(value) => self.add_token(TokenType::Float(value)),
                 Err(e) => {
-                    eprintln!("Failed to parse float '{}': {}", parsed_text, e);
-                    panic!("Invalid float literal: {}", parsed_text);
+                    return Err(LexerError {
+                        message: format!("Failed to parse float '{}': {}", parsed_text, e),
+                        line: self.line,
+                    });
                 }
             }
         } else {
@@ -354,7 +356,7 @@ impl Lexer {
                 text_str
             };
 
-            // First try to parse as i64
+            // For default integer literals (without type suffix), try i64 first, then u64 for large positive numbers
             match parsed_text.parse::<i64>() {
                 Ok(value) => self.add_token(TokenType::Integer(value)),
                 Err(_) => {
@@ -362,31 +364,34 @@ impl Lexer {
                     if !is_negative {
                         match parsed_text.parse::<u64>() {
                             Ok(value) => {
-                                // For numbers that fit in u64 but not i64, we need to handle them specially
-                                // Since we're using TokenType::Integer(i64), we can't represent numbers > i64::MAX
-                                // For now, we'll panic with a more helpful error message
+                                // For large u64 values that don't fit in i64, we need to handle them appropriately
+                                // Since TokenType::Integer only supports i64, we must emit a helpful error
                                 if value > i64::MAX as u64 {
-                                    eprintln!("Integer literal '{}' is too large for i64. Consider adding a 'u64' suffix: {}u64", parsed_text, parsed_text);
-                                    panic!("Integer literal too large: {}", parsed_text);
+                                    return Err(LexerError {
+                                        message: format!("Integer literal '{}' is too large for default int type. Consider adding a 'u64' suffix: {}u64", parsed_text, parsed_text),
+                                        line: self.line,
+                                    });
                                 } else {
                                     self.add_token(TokenType::Integer(value as i64))
                                 }
                             }
                             Err(e) => {
-                                eprintln!("Failed to parse integer '{}': {}", parsed_text, e);
-                                panic!("Invalid integer literal: {}", parsed_text);
+                                return Err(LexerError {
+                                    message: format!("Failed to parse integer '{}': {}", parsed_text, e),
+                                    line: self.line,
+                                });
                             }
                         }
                     } else {
-                        eprintln!(
-                            "Failed to parse integer '{}': number too large for i64",
-                            parsed_text
-                        );
-                        panic!("Invalid integer literal: {}", parsed_text);
+                        return Err(LexerError {
+                            message: format!("Failed to parse integer '{}': number too large for i64", parsed_text),
+                            line: self.line,
+                        });
                     }
                 }
             }
         }
+        Ok(())
     }
 
     fn parse_typed_integer<T: std::str::FromStr + std::fmt::Debug>(
@@ -395,7 +400,7 @@ impl Lexer {
         is_negative: bool,
         suffix: &str,
         token_type_constructor: fn(T) -> TokenType,
-    ) {
+    ) -> Result<(), LexerError> {
         let parsed_text = if is_negative {
             // For negative numbers, the text includes the minus sign, so we can parse directly
             text.to_string()
@@ -410,10 +415,13 @@ impl Lexer {
                     self.advance();
                 }
                 self.add_token(token_type_constructor(value));
+                Ok(())
             }
             Err(_) => {
-                eprintln!("Failed to parse {} literal '{}'", suffix, parsed_text);
-                panic!("Invalid {} literal: {}", suffix, parsed_text);
+                Err(LexerError {
+                    message: format!("Failed to parse {} literal '{}'", suffix, parsed_text),
+                    line: self.line,
+                })
             }
         }
     }

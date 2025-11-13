@@ -1,6 +1,7 @@
-use crate::ast::{Parameter, Statement, Type};
+use crate::ast::{Parameter, Statement, Type, Expr};
 use std::fmt;
 use super::error::InterpreterError;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
@@ -9,6 +10,12 @@ pub enum Value {
     Boolean(bool),
     String(String),
     Array(Vec<Value>),
+    Lambda {
+        parameters: Vec<Parameter>,
+        body: Arc<Expr>,
+        return_type: Option<Type>,
+        closure: Arc<crate::interpreter::environment::Environment>,
+    },
 }
 
 impl fmt::Display for Value {
@@ -28,11 +35,12 @@ impl fmt::Display for Value {
                 }
                 write!(f, "]")
             }
+            Value::Lambda { .. } => write!(f, "<lambda function>"),
         }
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Function {
     pub name: String,
     pub parameters: Vec<Parameter>,
@@ -48,6 +56,7 @@ impl Value {
             Value::Boolean(_) => "bool",
             Value::String(_) => "string",
             Value::Array(_) => "array",
+            Value::Lambda { .. } => "lambda",
         }
     }
     

@@ -37,7 +37,14 @@ mod tests {
         let tokens = tokenize(source).unwrap();
         let program = parse(&tokens).unwrap();
         let analyzed_program = analyze(program);
-        
+
+        match &analyzed_program {
+            Err(e) => {
+                println!("Variable assignment error: {:?}", e);
+            },
+            Ok(_) => println!("Variable assignment success"),
+        }
+
         assert!(analyzed_program.is_ok());
     }
     

@@ -95,15 +95,15 @@ pub fn parse_function_declaration(parser: &mut super::Parser) -> Result<Statemen
             parser.consume(&TokenType::Identifier(param_name.clone()), "Expected parameter name")?;
             
             let param_type = if parser.match_token(&TokenType::Colon) {
-                parser.parse_type()?
+                Some(parser.parse_type()?)
             } else {
-                // For now, default to Integer if not specified
-                Type::Integer
+                None
             };
 
             parameters.push(Parameter {
                 name: param_name,
                 param_type,
+                inferred_type: None,
             });
             
             if !parser.match_token(&TokenType::Comma) {

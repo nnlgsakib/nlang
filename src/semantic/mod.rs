@@ -1,6 +1,7 @@
 pub mod analyzer;
 pub mod error;
 pub mod symbol;
+pub mod type_inference;
 
 #[cfg(test)]
 mod tests;

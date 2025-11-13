@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use super::value::{Value, Function};
 use super::error::InterpreterError;
 
-#[derive(Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Environment {
     pub variables: HashMap<String, Value>,
     pub functions: HashMap<String, Function>,
