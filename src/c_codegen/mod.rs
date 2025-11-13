@@ -24,6 +24,7 @@ pub struct CCodeGenerator {
     function_return_types: std::rc::Rc<std::collections::HashMap<String, String>>,
     current_function_return_type: Option<String>,
     function_parameters: std::collections::HashMap<String, Type>,
+    need_sha_helpers: bool,
 }
 impl CCodeGenerator {
     pub fn new() -> Self {
@@ -37,12 +38,14 @@ impl CCodeGenerator {
             function_return_types: std::rc::Rc::new(Default::default()),
             current_function_return_type: None,
             function_parameters: Default::default(),
+            need_sha_helpers: false,
         };
         generator.line("#include <stdio.h>");
         generator.line("#include <string.h>");
         generator.line("#include <stdlib.h>");
         generator.line("#include <math.h>");
         generator.line("#include <stdint.h>"); // For int32_t
+        generator.line("#include <time.h>");
         generator.line("#include <locale.h>");  // For setlocale
         generator.line("#ifdef _WIN32");
         generator.line("#include <windows.h>");
@@ -86,6 +89,8 @@ impl CCodeGenerator {
     generator.pop();
     generator.line("}");
     generator.empty();
+
+        // SHA-256 helper will be emitted lazily when used
    
     generator.line("char* float_to_str(double value) {");
     generator.push();
@@ -163,9 +168,11 @@ impl CCodeGenerator {
 // Public API
 // --------------------------------------------------------------------- //
 pub fn generate_program(mut self, prog: &Program) -> Result<String, CCodeGenError> {
+    self.scan_features(prog);
     self.collect_strings(prog);
     self.extract_function_return_types(prog);
     self.emit_string_consts()?;
+    if self.need_sha_helpers { self.emit_sha_helpers(); }
     self.emit_forward_decls(prog)?;
     self.emit_functions(prog)?;
     Ok(self.buf)
@@ -187,6 +194,93 @@ fn block(&mut self, f: impl FnOnce(&mut Self)) {
     self.line("}");
 }
 fn write(&mut self, s: &str) { self.buf.push_str(s); }
+fn scan_features(&mut self, prog: &Program) {
+    for stmt in &prog.statements {
+        self.scan_stmt(stmt);
+    }
+}
+fn scan_stmt(&mut self, stmt: &Statement) {
+    match stmt {
+        Statement::Expression(e) => self.scan_expr(e),
+        Statement::LetDeclaration { initializer, .. } => {
+            if let Some(e) = initializer { self.scan_expr(e); }
+        }
+        Statement::FunctionDeclaration { body, .. } => {
+            for s in body { self.scan_stmt(s); }
+        }
+        Statement::Block { statements } => {
+            for s in statements { self.scan_stmt(s); }
+        }
+        Statement::If { condition, then_branch, else_branch } => {
+            self.scan_expr(condition);
+            self.scan_stmt(then_branch);
+            if let Some(b) = else_branch { self.scan_stmt(b); }
+        }
+        Statement::While { condition, body } => { self.scan_expr(condition); self.scan_stmt(body); }
+        Statement::For { initializer, condition, increment, body } => {
+            if let Some(s) = initializer { self.scan_stmt(s); }
+            if let Some(e) = condition { self.scan_expr(e); }
+            if let Some(e) = increment { self.scan_expr(e); }
+            self.scan_stmt(body);
+        }
+        Statement::Return { value } => { if let Some(v) = value { self.scan_expr(v); } }
+        Statement::Pick { expression, cases, default } => {
+            self.scan_expr(expression);
+            for c in cases { for v in &c.values { self.scan_expr(v); } self.scan_stmt(&c.body); }
+            if let Some(d) = default { self.scan_stmt(d); }
+        }
+        Statement::RepeatUntil { body, condition } => { self.scan_stmt(body); self.scan_expr(condition); }
+        Statement::Loop { body } => { self.scan_stmt(body); }
+        _ => {}
+    }
+}
+fn scan_expr(&mut self, e: &Expr) {
+    match e {
+        Expr::Call { callee, arguments, .. } => {
+            if let Expr::Variable(name) = callee.as_ref() {
+                if name == "sha256" || name == "sha256_random" { self.need_sha_helpers = true; }
+            }
+            for a in arguments { self.scan_expr(a); }
+        }
+        Expr::Binary { left, right, .. } => { self.scan_expr(left); self.scan_expr(right); }
+        Expr::Unary { operand, .. } => { self.scan_expr(operand); }
+        Expr::ArrayLiteral { elements } => { for el in elements { self.scan_expr(el); } }
+        Expr::Function { body, .. } => { for s in body { self.scan_stmt(s); } }
+        Expr::Assign { value, .. } => { self.scan_expr(value); }
+        Expr::AssignIndex { sequence, index, value } => { self.scan_expr(sequence); self.scan_expr(index); self.scan_expr(value); }
+        Expr::Index { sequence, index } => { self.scan_expr(sequence); self.scan_expr(index); }
+        _ => {}
+    }
+}
+fn emit_sha_helpers(&mut self) {
+    self.empty();
+    self.line("// SHA-256 helper (portable C) generating lowercase hex digest");
+    self.line("typedef struct { unsigned int state[8]; unsigned int bitcount[2]; unsigned char buffer[64]; } SHA256_CTX;");
+    self.line("static unsigned int ROTR(unsigned int x, unsigned int n){ return (x >> n) | (x << (32 - n)); }");
+    self.line("static unsigned int SHR(unsigned int x, unsigned int n){ return x >> n; }");
+    self.line("static unsigned int CH(unsigned int x, unsigned int y, unsigned int z){ return (x & y) ^ (~x & z); }");
+    self.line("static unsigned int MAJ(unsigned int x, unsigned int y, unsigned int z){ return (x & y) ^ (x & z) ^ (y & z); }");
+    self.line("static unsigned int SIGMA0(unsigned int x){ return ROTR(x,2) ^ ROTR(x,13) ^ ROTR(x,22); }");
+    self.line("static unsigned int SIGMA1(unsigned int x){ return ROTR(x,6) ^ ROTR(x,11) ^ ROTR(x,25); }");
+    self.line("static unsigned int sha_sigma0(unsigned int x){ return ROTR(x,7) ^ ROTR(x,18) ^ SHR(x,3); }");
+    self.line("static unsigned int sha_sigma1(unsigned int x){ return ROTR(x,17) ^ ROTR(x,19) ^ SHR(x,10); }");
+    self.line("static const unsigned int K256[64] = {\
+        0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,\
+        0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,\
+        0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,\
+        0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,\
+        0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,\
+        0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,\
+        0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,\
+        0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2 };");
+    self.line("static void sha256_init(SHA256_CTX* ctx){ ctx->state[0]=0x6a09e667; ctx->state[1]=0xbb67ae85; ctx->state[2]=0x3c6ef372; ctx->state[3]=0xa54ff53a; ctx->state[4]=0x510e527f; ctx->state[5]=0x9b05688c; ctx->state[6]=0x1f83d9ab; ctx->state[7]=0x5be0cd19; ctx->bitcount[0]=0; ctx->bitcount[1]=0; }");
+    self.line("static void sha256_transform(SHA256_CTX* ctx, const unsigned char* data){ unsigned int W[64]; unsigned int a,b,c,d,e,f,g,h; int t; for(t=0;t<16;t++){ W[t]= (data[t*4]<<24) | (data[t*4+1]<<16) | (data[t*4+2]<<8) | (data[t*4+3]); } for(t=16;t<64;t++){ W[t]= sha_sigma1(W[t-2]) + W[t-7] + sha_sigma0(W[t-15]) + W[t-16]; } a=ctx->state[0]; b=ctx->state[1]; c=ctx->state[2]; d=ctx->state[3]; e=ctx->state[4]; f=ctx->state[5]; g=ctx->state[6]; h=ctx->state[7]; for(t=0;t<64;t++){ unsigned int T1 = h + SIGMA1(e) + CH(e,f,g) + K256[t] + W[t]; unsigned int T2 = SIGMA0(a) + MAJ(a,b,c); h=g; g=f; f=e; e=d+T1; d=c; c=b; b=a; a=T1+T2; } ctx->state[0]+=a; ctx->state[1]+=b; ctx->state[2]+=c; ctx->state[3]+=d; ctx->state[4]+=e; ctx->state[5]+=f; ctx->state[6]+=g; ctx->state[7]+=h; }");
+    self.line("static void sha256_update(SHA256_CTX* ctx, const unsigned char* data, size_t len){ size_t i = (ctx->bitcount[0] >> 3) % 64; ctx->bitcount[0] += (unsigned int)len << 3; if(ctx->bitcount[0] < ((unsigned int)len << 3)) ctx->bitcount[1]++; ctx->bitcount[1] += (unsigned int)len >> 29; size_t fill = 64 - i; if (i && len >= fill){ memcpy(ctx->buffer + i, data, fill); sha256_transform(ctx, ctx->buffer); data += fill; len -= fill; i = 0; } while (len >= 64){ sha256_transform(ctx, data); data += 64; len -= 64; } if (len){ memcpy(ctx->buffer + i, data, len); } }");
+    self.line("static void sha256_final(SHA256_CTX* ctx, unsigned char* out){ unsigned char pad[64]={0}; unsigned char lenbits[8]; unsigned int high = ctx->bitcount[1]; unsigned int low = ctx->bitcount[0]; lenbits[0]=(high>>24)&0xFF; lenbits[1]=(high>>16)&0xFF; lenbits[2]=(high>>8)&0xFF; lenbits[3]=high&0xFF; lenbits[4]=(low>>24)&0xFF; lenbits[5]=(low>>16)&0xFF; lenbits[6]=(low>>8)&0xFF; lenbits[7]=low&0xFF; pad[0]=0x80; size_t i = (ctx->bitcount[0] >> 3) % 64; size_t padlen = (i < 56) ? (56 - i) : (120 - i); sha256_update(ctx, pad, padlen); sha256_update(ctx, lenbits, 8); for (i=0;i<8;i++){ out[i*4] = (ctx->state[i]>>24)&0xFF; out[i*4+1] = (ctx->state[i]>>16)&0xFF; out[i*4+2] = (ctx->state[i]>>8)&0xFF; out[i*4+3] = ctx->state[i]&0xFF; } }");
+    self.line("static char* sha256_hex_bytes(const unsigned char* data, size_t len){ unsigned char digest[32]; SHA256_CTX ctx; sha256_init(&ctx); sha256_update(&ctx, data, len); sha256_final(&ctx, digest); static const char* hex = \"0123456789abcdef\"; char* out = (char*)malloc(65); if(!out) return NULL; for(int i=0;i<32;i++){ out[i*2] = hex[(digest[i]>>4)&0xF]; out[i*2+1] = hex[digest[i]&0xF]; } out[64]=0; return out; }");
+    self.line("static char* sha256_hex_str(const char* s){ return sha256_hex_bytes((const unsigned char*)s, strlen(s)); }");
+    self.line("static char* sha256_random_hex(size_t n){ static int seeded=0; if(!seeded){ srand((unsigned)time(NULL)); seeded=1; } unsigned char* buf=(unsigned char*)malloc(n); if(!buf) return NULL; for(size_t i=0;i<n;i++){ buf[i]=(unsigned char)(rand()&0xFF); } char* out=sha256_hex_bytes(buf, n); free(buf); return out; }");
+}
 // --------------------------------------------------------------------- //
 // String constants
 // --------------------------------------------------------------------- //
@@ -903,6 +997,30 @@ fn emit_expr(&mut self, e: &Expr) -> Result<String, CCodeGenError> {
                         return Err(CCodeGenError::Unsupported("input() takes 0 or 1 arguments".into()));
                     }
                 }
+                "sha256" => {
+                    if arguments.len() != 1 {
+                        return Err(CCodeGenError::Unsupported("sha256() expects 1 argument".into()));
+                    }
+                    self.need_sha_helpers = true;
+                    let arg_expr = &arguments[0];
+                    let arg_code = self.emit_expr(arg_expr)?;
+                    let arg_type = self.infer_type(arg_expr);
+                    if arg_type == "const char*" || arg_type == "char*" {
+                        return Ok(format!("sha256_hex_str({})", arg_code));
+                    } else if let Expr::Variable(var_name) = arg_expr {
+                        // Compute array length using sizeof trick
+                        let len_code = format!("(sizeof({}) / sizeof({}[0]))", arg_code, arg_code);
+                        return Ok(format!("sha256_hex_bytes((const unsigned char*){}, {})", arg_code, len_code));
+                    } else {
+                        return Err(CCodeGenError::Unsupported("sha256() argument must be string or array variable".into()));
+                    }
+                }
+                "sha256_random" => {
+                    if arguments.len() != 1 { return Err(CCodeGenError::Unsupported("sha256_random() expects 1 argument".into())); }
+                    self.need_sha_helpers = true;
+                    let ncode = self.emit_expr(&arguments[0])?;
+                    return Ok(format!("sha256_random_hex((size_t)({}))", ncode));
+                }
                 _ => {}
             }
             let args: Vec<_> = arguments.iter().map(|a| self.emit_expr(a)).collect::<Result<_, _>>()?;
@@ -1038,6 +1156,11 @@ fn binop(&self, op: &BinaryOperator) -> &'static str {
         BinaryOperator::GreaterEqual => ">=",
         BinaryOperator::And => "&&",
         BinaryOperator::Or => "||",
+        BinaryOperator::BitAnd => "&",
+        BinaryOperator::BitOr => "|",
+        BinaryOperator::BitXor => "^",
+        BinaryOperator::ShiftLeft => "<<",
+        BinaryOperator::ShiftRight => ">>",
     }
 }
 
@@ -1046,17 +1169,10 @@ fn is_string_expression(&self, expr: &Expr) -> bool {
     match expr {
         Expr::Literal(Literal::String(_)) => true,
         Expr::Variable(name) => {
-            // Check if we have type information for this variable
-            // Try to infer from context: function calls that return strings, string literals, etc.
-            if let Some(var_info) = self.vars.get(name) {
-                // If it's a string constant reference, it's a string
-                var_info.starts_with("str_const_")
+            if let Some(var_type) = self.vars.get(name) {
+                var_type.contains("char*")
             } else {
-                // Check if it's a string constant (starts with str_const_)
-                if name.starts_with("str_const_") {
-                    return true;
-                }
-                // Check variable name patterns for common string variable names
+                if name.starts_with("str_const_") { return true; }
                 name.contains("str") || name.contains("text") || name.contains("message") ||
                 name.contains("greeting") || name.contains("result") || name.contains("combined") ||
                 name.contains("name") || name.contains("prefix") || name.contains("suffix") ||
@@ -1085,7 +1201,7 @@ fn is_string_expression(&self, expr: &Expr) -> bool {
             if let Expr::Variable(fname) = callee.as_ref() {
                 matches!(fname.as_str(), "str" | "int_to_str" | "float_to_str" | "upper" | "lower" | "trim" |
                                       "create_message" | "mixed_type_demo" | "classify_number" | "process_data" |
-                                      "process_string_list" | "analyze_values" | "chain_operations")
+                                      "process_string_list" | "analyze_values" | "chain_operations" | "hex8" | "sha256")
             } else {
                 false
             }
@@ -1118,7 +1234,7 @@ fn current_function_returns_string(&self) -> bool {
 }
 
 fn unop(&self, op: &UnaryOperator) -> &'static str {
-    match op { UnaryOperator::Negate => "-", UnaryOperator::Not => "!", }
+    match op { UnaryOperator::Negate => "-", UnaryOperator::Not => "!", UnaryOperator::BitNot => "~" }
 }
 fn infer_type(&self, e: &Expr) -> String {
     match e {
@@ -1145,6 +1261,7 @@ fn infer_type(&self, e: &Expr) -> String {
                     "str_concat" => "char*".into(),
                     "int_to_str" => "char*".into(),
                     "float_to_str" => "char*".into(),
+                    "sha256" => "char*".into(),
                     "int" => "int".into(),
                     "float" => "double".into(),
                     "abs" => "int".into(),

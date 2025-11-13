@@ -633,6 +633,72 @@ impl Interpreter {
                                 }),
                             }
                         }
+                        "sha256" => {
+                            if arguments.len() != 1 {
+                                return Err(InterpreterError::InvalidOperation {
+                                    message: "sha256 function requires 1 argument (string)".to_string(),
+                                });
+                            }
+                            let arg = self.evaluate_expression(&arguments[0], env)?;
+                            match arg {
+                                Value::String(s) => {
+                                    use sha2::{Digest, Sha256};
+                                    let mut hasher = Sha256::new();
+                                    hasher.update(s.as_bytes());
+                                    let result = hasher.finalize();
+                                    let hex_str = hex::encode(result);
+                                    Ok(Value::String(hex_str))
+                                }
+                                Value::Array(arr) => {
+                                    // Treat array of integers as bytes
+                                    use sha2::{Digest, Sha256};
+                                    let mut hasher = Sha256::new();
+                                    let mut buf: Vec<u8> = Vec::with_capacity(arr.len());
+                                    for v in arr {
+                                        if let Value::Integer(i) = v {
+                                            buf.push((i as i64 & 0xFF) as u8);
+                                        } else {
+                                            return Err(InterpreterError::InvalidOperation { message: "sha256 array must contain integers".to_string() });
+                                        }
+                                    }
+                                    hasher.update(&buf);
+                                    let result = hasher.finalize();
+                                    let hex_str = hex::encode(result);
+                                    Ok(Value::String(hex_str))
+                                }
+                                _ => Err(InterpreterError::InvalidOperation {
+                                    message: "sha256 expects string or array of integers".to_string(),
+                                }),
+                            }
+                        }
+                        "sha256_random" => {
+                            if arguments.len() != 1 {
+                                return Err(InterpreterError::InvalidOperation {
+                                    message: "sha256_random function requires 1 argument (length)".to_string(),
+                                });
+                            }
+                            let n_val = self.evaluate_expression(&arguments[0], env)?;
+                            let n = match n_val {
+                                Value::Integer(i) => i,
+                                _ => {
+                                    return Err(InterpreterError::InvalidOperation {
+                                        message: "sha256_random expects integer length".to_string(),
+                                    });
+                                }
+                            };
+                            if n <= 0 {
+                                return Err(InterpreterError::InvalidOperation { message: "sha256_random length must be > 0".to_string() });
+                            }
+                            use rand::RngCore;
+                            use sha2::{Digest, Sha256};
+                            let mut buf = vec![0u8; n as usize];
+                            rand::rngs::OsRng.fill_bytes(&mut buf);
+                            let mut hasher = Sha256::new();
+                            hasher.update(&buf);
+                            let result = hasher.finalize();
+                            let hex_str = hex::encode(result);
+                            Ok(Value::String(hex_str))
+                        }
                         "int" => {
                             if arguments.len() != 1 {
                                 return Err(InterpreterError::InvalidOperation {
@@ -1049,6 +1115,36 @@ impl Interpreter {
             BinaryOperator::Or => {
                 Ok(Value::Boolean(left.to_bool()? || right.to_bool()?))
             }
+            BinaryOperator::BitAnd => {
+                match (left, right) {
+                    (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a & b)),
+                    _ => Err(InterpreterError::TypeMismatch { expected: "integer".to_string(), actual: format!("{} and {}", left.type_name(), right.type_name()) })
+                }
+            }
+            BinaryOperator::BitOr => {
+                match (left, right) {
+                    (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a | b)),
+                    _ => Err(InterpreterError::TypeMismatch { expected: "integer".to_string(), actual: format!("{} and {}", left.type_name(), right.type_name()) })
+                }
+            }
+            BinaryOperator::BitXor => {
+                match (left, right) {
+                    (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a ^ b)),
+                    _ => Err(InterpreterError::TypeMismatch { expected: "integer".to_string(), actual: format!("{} and {}", left.type_name(), right.type_name()) })
+                }
+            }
+            BinaryOperator::ShiftLeft => {
+                match (left, right) {
+                    (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a << (*b as u32))),
+                    _ => Err(InterpreterError::TypeMismatch { expected: "integer".to_string(), actual: format!("{} and {}", left.type_name(), right.type_name()) })
+                }
+            }
+            BinaryOperator::ShiftRight => {
+                match (left, right) {
+                    (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a >> (*b as u32))),
+                    _ => Err(InterpreterError::TypeMismatch { expected: "integer".to_string(), actual: format!("{} and {}", left.type_name(), right.type_name()) })
+                }
+            }
         }
     }
     
@@ -1066,6 +1162,12 @@ impl Interpreter {
             }
             UnaryOperator::Not => {
                 Ok(Value::Boolean(!operand.to_bool()?))
+            }
+            UnaryOperator::BitNot => {
+                match operand {
+                    Value::Integer(i) => Ok(Value::Integer(!i)),
+                    _ => Err(InterpreterError::TypeMismatch { expected: "integer".to_string(), actual: operand.type_name().to_string() })
+                }
             }
         }
     }

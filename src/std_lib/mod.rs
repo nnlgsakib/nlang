@@ -56,6 +56,26 @@ impl StdLib {
                     return_type: Type::Integer,
                     implementation: builtin_len_array,
                 },
+
+                // Cryptographic Functions
+                BuiltInFunction {
+                    name: "sha256".to_string(),
+                    parameters: vec![Type::String],
+                    return_type: Type::String,
+                    implementation: builtin_sha256_string,
+                },
+                BuiltInFunction {
+                    name: "sha256".to_string(),
+                    parameters: vec![Type::Array(Box::new(Type::Void), 0)],
+                    return_type: Type::String,
+                    implementation: builtin_sha256_array,
+                },
+                BuiltInFunction {
+                    name: "sha256_random".to_string(),
+                    parameters: vec![Type::Integer],
+                    return_type: Type::String,
+                    implementation: builtin_sha256_random,
+                },
                 
                 // Type Conversion Functions
                 BuiltInFunction {

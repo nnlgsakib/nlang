@@ -782,7 +782,7 @@ impl<'a> Parser<'a> {
     }
     
     fn and(&mut self) -> Result<Expr, ParseError> {
-        let mut expr = self.equality()?;
+        let mut expr = self.bitor()?;
         
         while self.match_token(&TokenType::And) {
             let operator = self.previous().clone();
@@ -849,13 +849,13 @@ impl<'a> Parser<'a> {
     }
     
     fn factor(&mut self) -> Result<Expr, ParseError> {
-        let mut expr = self.unary()?;
+        let mut expr = self.bitshift()?;
         
         while self.match_token(&TokenType::Star) 
             || self.match_token(&TokenType::Slash) 
             || self.match_token(&TokenType::Percent) {
             let operator = self.previous().clone();
-            let right = self.unary()?;
+            let right = self.bitshift()?;
             expr = Expr::Binary {
                 left: Box::new(expr),
                 operator: self.binary_operator_from_token(&operator)?,
@@ -867,7 +867,7 @@ impl<'a> Parser<'a> {
     }
     
     fn unary(&mut self) -> Result<Expr, ParseError> {
-        if self.match_token(&TokenType::Minus) || self.match_token(&TokenType::Not) {
+        if self.match_token(&TokenType::Minus) || self.match_token(&TokenType::Not) || self.match_token(&TokenType::BitNot) {
             let operator = self.previous().clone();
             let right = self.unary()?;
             return Ok(Expr::Unary {
@@ -1084,6 +1084,11 @@ impl<'a> Parser<'a> {
             TokenType::GreaterEqual => Ok(BinaryOperator::GreaterEqual),
             TokenType::And => Ok(BinaryOperator::And),
             TokenType::Or => Ok(BinaryOperator::Or),
+            TokenType::BitAnd => Ok(BinaryOperator::BitAnd),
+            TokenType::BitOr => Ok(BinaryOperator::BitOr),
+            TokenType::BitXor => Ok(BinaryOperator::BitXor),
+            TokenType::ShiftLeft => Ok(BinaryOperator::ShiftLeft),
+            TokenType::ShiftRight => Ok(BinaryOperator::ShiftRight),
             _ => Err(ParseError {
                 message: format!("Invalid binary operator: {:?}", token.token_type),
                 line: token.line,
@@ -1095,6 +1100,7 @@ impl<'a> Parser<'a> {
         match &token.token_type {
             TokenType::Minus => Ok(UnaryOperator::Negate),
             TokenType::Not => Ok(UnaryOperator::Not),
+            TokenType::BitNot => Ok(UnaryOperator::BitNot),
             _ => Err(ParseError {
                 message: format!("Invalid unary operator: {:?}", token.token_type),
                 line: token.line,
@@ -1145,5 +1151,63 @@ impl<'a> Parser<'a> {
             message: message.to_string(),
             line: self.peek().line,
         })
+    }
+    
+    // bitwise parsing helpers inserted below
+    
+    fn bitshift(&mut self) -> Result<Expr, ParseError> {
+        let mut expr = self.unary()?;
+        while self.match_token(&TokenType::ShiftLeft) || self.match_token(&TokenType::ShiftRight) {
+            let operator = self.previous().clone();
+            let right = self.unary()?;
+            expr = Expr::Binary {
+                left: Box::new(expr),
+                operator: self.binary_operator_from_token(&operator)?,
+                right: Box::new(right),
+            };
+        }
+        Ok(expr)
+    }
+
+    fn bitand(&mut self) -> Result<Expr, ParseError> {
+        let mut expr = self.equality()?;
+        while self.match_token(&TokenType::BitAnd) {
+            let operator = self.previous().clone();
+            let right = self.equality()?;
+            expr = Expr::Binary {
+                left: Box::new(expr),
+                operator: self.binary_operator_from_token(&operator)?,
+                right: Box::new(right),
+            };
+        }
+        Ok(expr)
+    }
+
+    fn bitxor(&mut self) -> Result<Expr, ParseError> {
+        let mut expr = self.bitand()?;
+        while self.match_token(&TokenType::BitXor) {
+            let operator = self.previous().clone();
+            let right = self.bitand()?;
+            expr = Expr::Binary {
+                left: Box::new(expr),
+                operator: self.binary_operator_from_token(&operator)?,
+                right: Box::new(right),
+            };
+        }
+        Ok(expr)
+    }
+
+    fn bitor(&mut self) -> Result<Expr, ParseError> {
+        let mut expr = self.bitxor()?;
+        while self.match_token(&TokenType::BitOr) {
+            let operator = self.previous().clone();
+            let right = self.bitxor()?;
+            expr = Expr::Binary {
+                left: Box::new(expr),
+                operator: self.binary_operator_from_token(&operator)?,
+                right: Box::new(right),
+            };
+        }
+        Ok(expr)
     }
 }

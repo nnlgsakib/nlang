@@ -733,6 +733,15 @@ impl SemanticAnalyzer {
                             });
                         }
                     },
+                    crate::ast::UnaryOperator::BitNot => {
+                        let operand_type = self.infer_type(&analyzed_operand)?;
+                        if !(
+                            operand_type == Type::Unknown ||
+                            operand_type == Type::Integer || operand_type == Type::I8 || operand_type == Type::I16 || operand_type == Type::I32 || operand_type == Type::I64 || operand_type == Type::ISize || operand_type == Type::U8 || operand_type == Type::U16 || operand_type == Type::U32 || operand_type == Type::U64 || operand_type == Type::USize
+                        ) {
+                            return Err(SemanticError { message: "Operand of bitwise NOT must be integer".to_string() });
+                        }
+                    },
                 }
                 
                 Ok(Expr::Unary {
@@ -783,6 +792,17 @@ impl SemanticAnalyzer {
                             return Err(SemanticError {
                                 message: format!("len() function cannot be called on type {:?}", arg_type),
                             });
+                        }
+                    }
+                } else if func_name == "sha256" {
+                    if analyzed_arguments.len() != 1 {
+                        return Err(SemanticError { message: "sha256() expects exactly one argument".to_string() });
+                    }
+                    let arg_t = self.infer_type(&analyzed_arguments[0])?;
+                    match arg_t {
+                        Type::String | Type::Array(_, _) => {},
+                        _ => {
+                            return Err(SemanticError { message: format!("sha256() cannot be called on type {:?}", arg_t) });
                         }
                     }
                 } else if self.std_lib.is_builtin_function(&func_name) {
@@ -1303,6 +1323,18 @@ impl SemanticAnalyzer {
                             })
                         }
                     },
+                    BinaryOperator::BitAnd | BinaryOperator::BitOr | BinaryOperator::BitXor | BinaryOperator::ShiftLeft | BinaryOperator::ShiftRight => {
+                        // Bitwise operations require integer-like operands and return integer
+                        if (
+                            left_type == Type::Unknown || left_type == Type::Integer || left_type == Type::I8 || left_type == Type::I16 || left_type == Type::I32 || left_type == Type::I64 || left_type == Type::ISize || left_type == Type::U8 || left_type == Type::U16 || left_type == Type::U32 || left_type == Type::U64 || left_type == Type::USize
+                        ) && (
+                            right_type == Type::Unknown || right_type == Type::Integer || right_type == Type::I8 || right_type == Type::I16 || right_type == Type::I32 || right_type == Type::I64 || right_type == Type::ISize || right_type == Type::U8 || right_type == Type::U16 || right_type == Type::U32 || right_type == Type::U64 || right_type == Type::USize
+                        ) {
+                            Ok(Type::Integer)
+                        } else {
+                            Err(SemanticError { message: "Bitwise operations require integer operands".to_string() })
+                        }
+                    },
                 }
             },
             Expr::Unary { operator, operand } => {
@@ -1324,6 +1356,13 @@ impl SemanticAnalyzer {
                             Err(SemanticError {
                                 message: "Negation requires numeric operand".to_string(),
                             })
+                        }
+                    },
+                    crate::ast::UnaryOperator::BitNot => {
+                        if operand_type == Type::Unknown || operand_type == Type::Integer || operand_type == Type::I8 || operand_type == Type::I16 || operand_type == Type::I32 || operand_type == Type::I64 || operand_type == Type::ISize || operand_type == Type::U8 || operand_type == Type::U16 || operand_type == Type::U32 || operand_type == Type::U64 || operand_type == Type::USize {
+                            Ok(Type::Integer)
+                        } else {
+                            Err(SemanticError { message: "Bitwise NOT requires integer operand".to_string() })
                         }
                     },
                 }

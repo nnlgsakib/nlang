@@ -151,6 +151,9 @@ impl TypeInferenceEngine {
                 // Logical operations require boolean operands and return boolean
                 Some(Type::Boolean)
             },
+            BinaryOperator::BitAnd | BinaryOperator::BitOr | BinaryOperator::BitXor | BinaryOperator::ShiftLeft | BinaryOperator::ShiftRight => {
+                Some(Type::Integer)
+            },
         }
     }
 
@@ -163,6 +166,7 @@ impl TypeInferenceEngine {
                 Some(Type::Unknown) // Will be unified with the operand type
             },
             UnaryOperator::Not => Some(Type::Boolean),
+            UnaryOperator::BitNot => Some(Type::Integer),
         }
     }
 
@@ -175,6 +179,8 @@ impl TypeInferenceEngine {
                     "abs" | "max" | "min" | "pow" => Some(Type::Integer),
                     "abs_float" => Some(Type::F64),
                     "len" => Some(Type::Integer),
+                    "sha256" => Some(Type::String),
+                    "sha256_random" => Some(Type::String),
                     "upper" | "lower" | "trim" | "contains" => Some(Type::String),
                     "int" => Some(Type::Integer),
                     "float" => Some(Type::F64),
@@ -277,6 +283,9 @@ impl TypeInferenceEngine {
             BinaryOperator::And | BinaryOperator::Or => {
                 Type::Boolean
             },
+            BinaryOperator::BitAnd | BinaryOperator::BitOr | BinaryOperator::BitXor | BinaryOperator::ShiftLeft | BinaryOperator::ShiftRight => {
+                Type::Integer
+            },
         }
     }
 
@@ -314,6 +323,7 @@ impl TypeInferenceEngine {
         match operator {
             UnaryOperator::Negate => operand.clone(),
             UnaryOperator::Not => Type::Boolean,
+            UnaryOperator::BitNot => Type::Integer,
         }
     }
 

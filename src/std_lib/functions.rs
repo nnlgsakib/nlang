@@ -1,5 +1,8 @@
 use crate::ast::{Expr, Literal};
 use std::io::{self, Write};
+use sha2::{Digest, Sha256};
+use hex;
+use rand::RngCore;
 
 // Helper function to extract string value from expression
 fn extract_string_value(expr: &Expr) -> Result<String, String> {
@@ -192,6 +195,49 @@ pub fn builtin_len_array(args: &[Expr]) -> Result<Expr, String> {
         Expr::ArrayLiteral { elements } => Ok(Expr::Literal(Literal::Integer(elements.len() as i64))),
         _ => Err("len() argument must be an array".to_string()),
     }
+}
+
+pub fn builtin_sha256_string(args: &[Expr]) -> Result<Expr, String> {
+    if args.len() != 1 { return Err("sha256() takes exactly 1 argument".to_string()); }
+    if let Expr::Literal(Literal::String(s)) = &args[0] {
+        let mut hasher = Sha256::new();
+        hasher.update(s.as_bytes());
+        let result = hasher.finalize();
+        Ok(Expr::Literal(Literal::String(hex::encode(result))))
+    } else {
+        Err("sha256() argument must be a string".to_string())
+    }
+}
+
+pub fn builtin_sha256_array(args: &[Expr]) -> Result<Expr, String> {
+    if args.len() != 1 { return Err("sha256() takes exactly 1 argument".to_string()); }
+    if let Expr::ArrayLiteral { elements } = &args[0] {
+        let mut buf: Vec<u8> = Vec::with_capacity(elements.len());
+        for e in elements {
+            match e {
+                Expr::Literal(Literal::Integer(i)) => buf.push((*i as i64 & 0xFF) as u8),
+                _ => return Err("sha256() array must contain integers".to_string()),
+            }
+        }
+        let mut hasher = Sha256::new();
+        hasher.update(&buf);
+        let result = hasher.finalize();
+        Ok(Expr::Literal(Literal::String(hex::encode(result))))
+    } else {
+        Err("sha256() argument must be an array literal".to_string())
+    }
+}
+
+pub fn builtin_sha256_random(args: &[Expr]) -> Result<Expr, String> {
+    if args.len() != 1 { return Err("sha256_random() takes exactly 1 argument".to_string()); }
+    let n = match &args[0] { Expr::Literal(Literal::Integer(i)) => *i, _ => return Err("sha256_random(n) expects integer length".to_string()) };
+    if n <= 0 { return Err("sha256_random length must be > 0".to_string()); }
+    let mut buf = vec![0u8; n as usize];
+    rand::rngs::OsRng.fill_bytes(&mut buf);
+    let mut hasher = Sha256::new();
+    hasher.update(&buf);
+    let result = hasher.finalize();
+    Ok(Expr::Literal(Literal::String(hex::encode(result))))
 }
 
 pub fn builtin_int(args: &[Expr]) -> Result<Expr, String> {

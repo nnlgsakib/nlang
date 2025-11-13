@@ -92,6 +92,8 @@ impl Lexer {
             '<' => {
                 let token_type = if self.match_char('=') {
                     TokenType::LessEqual
+                } else if self.match_char('<') {
+                    TokenType::ShiftLeft
                 } else {
                     TokenType::Less
                 };
@@ -100,6 +102,8 @@ impl Lexer {
             '>' => {
                 let token_type = if self.match_char('=') {
                     TokenType::GreaterEqual
+                } else if self.match_char('>') {
+                    TokenType::ShiftRight
                 } else {
                     TokenType::Greater
                 };
@@ -130,27 +134,30 @@ impl Lexer {
                 if self.match_char('&') {
                     self.add_token(TokenType::And);
                 } else {
-                    return Err(LexerError {
-                        message: "Unexpected character: &".to_string(),
-                        line: self.line,
-                    });
+                    self.add_token(TokenType::BitAnd);
                 }
             }
             '|' => {
                 if self.match_char('|') {
                     self.add_token(TokenType::Or);
                 } else {
-                    return Err(LexerError {
-                        message: "Unexpected character: |".to_string(),
-                        line: self.line,
-                    });
+                    self.add_token(TokenType::BitOr);
                 }
             }
+            '^' => self.add_token(TokenType::BitXor),
+            '~' => self.add_token(TokenType::BitNot),
             '"' => self.string()?,
             '0'..='9' => {
-                // Check if this might be an identifier starting with a digit (for module names like 06_functions)
-                // We need to be careful not to interfere with numeric literals that have type suffixes
+                // Hex literal quick path: 0x... or 0X...
+                if self.source[self.start..].starts_with("0x") || self.source[self.start..].starts_with("0X") {
+                    // Consume leading '0' already read; ensure 'x' consumed by number_with_sign or here
+                    // We are in scan_token, so current points after first digit; consume 'x' and parse hex
+                    self.advance(); // consume 'x' or 'X'
+                    self.hex_number(false)?;
+                    return Ok(());
+                }
 
+                // Check if this might be an identifier starting with a digit (for module names like 06_functions)
                 let mut temp_pos = self.current;
 
                 // Skip the initial digits
@@ -185,6 +192,7 @@ impl Lexer {
                         self.number()?
                     }
                 } else {
+                    // At end; regular number
                     self.number()?
                 }
             }
@@ -245,6 +253,14 @@ impl Lexer {
         // If this is a negative number, we need to advance past the minus sign first
         if is_negative {
             self.advance(); // consume the minus sign
+        }
+
+        // Hex literal detection when starting with 0x or 0X
+        if self.peek() == '0' && (self.peek_next() == 'x' || self.peek_next() == 'X') {
+            // consume '0' and 'x'
+            self.advance();
+            self.advance();
+            return self.hex_number(is_negative);
         }
 
         while self.peek().is_ascii_digit() {
@@ -392,6 +408,110 @@ impl Lexer {
             }
         }
         Ok(())
+    }
+
+    // Parse hexadecimal integer literal with optional type suffixes
+    fn hex_number(&mut self, is_negative: bool) -> Result<(), LexerError> {
+        // Consume hex digits [0-9a-fA-F]
+        let mut saw_digit = false;
+        while {
+            let ch = self.peek();
+            match ch {
+                '0'..='9' | 'a'..='f' | 'A'..='F' => { self.advance(); saw_digit = true; true }
+                _ => false,
+            }
+        } {}
+
+        if !saw_digit {
+            return Err(LexerError { message: "Invalid hex literal: expected hex digits after 0x".to_string(), line: self.line });
+        }
+
+        let text_str = self.source[self.start..self.current].to_string();
+
+        // Strip optional sign and 0x prefix for parsing
+        let mut hex_part = text_str.clone();
+        // Remove leading '-' if present
+        if is_negative && hex_part.starts_with("-") {
+            hex_part = hex_part[1..].to_string();
+        }
+        // Remove leading 0x/0X
+        let prefix_len = 2; // '0x'
+        if hex_part.len() >= prefix_len {
+            hex_part = hex_part[prefix_len..].to_string();
+        }
+
+        // Check for type suffixes following the hex digits
+        if self.current < self.source.len() {
+            let remaining = &self.source[self.current..];
+            if remaining.starts_with("i8") {
+                let value = i8::from_str_radix(&hex_part, 16).map_err(|_| LexerError { message: format!("Failed to parse i8 hex literal '{}'", hex_part), line: self.line })?;
+                for _ in 0..2 { self.advance(); } // consume suffix
+                self.add_token(TokenType::I8Literal(if is_negative { -value } else { value }));
+                return Ok(());
+            } else if remaining.starts_with("i16") {
+                let value = i16::from_str_radix(&hex_part, 16).map_err(|_| LexerError { message: format!("Failed to parse i16 hex literal '{}'", hex_part), line: self.line })?;
+                for _ in 0..3 { self.advance(); }
+                self.add_token(TokenType::I16Literal(if is_negative { -value } else { value }));
+                return Ok(());
+            } else if remaining.starts_with("i32") {
+                let value = i32::from_str_radix(&hex_part, 16).map_err(|_| LexerError { message: format!("Failed to parse i32 hex literal '{}'", hex_part), line: self.line })?;
+                for _ in 0..3 { self.advance(); }
+                self.add_token(TokenType::I32Literal(if is_negative { -value } else { value }));
+                return Ok(());
+            } else if remaining.starts_with("i64") {
+                let value = i64::from_str_radix(&hex_part, 16).map_err(|_| LexerError { message: format!("Failed to parse i64 hex literal '{}'", hex_part), line: self.line })?;
+                for _ in 0..3 { self.advance(); }
+                self.add_token(TokenType::I64Literal(if is_negative { -value } else { value }));
+                return Ok(());
+            } else if remaining.starts_with("u8") {
+                let value = u8::from_str_radix(&hex_part, 16).map_err(|_| LexerError { message: format!("Failed to parse u8 hex literal '{}'", hex_part), line: self.line })?;
+                for _ in 0..2 { self.advance(); }
+                self.add_token(TokenType::U8Literal(value));
+                return Ok(());
+            } else if remaining.starts_with("u16") {
+                let value = u16::from_str_radix(&hex_part, 16).map_err(|_| LexerError { message: format!("Failed to parse u16 hex literal '{}'", hex_part), line: self.line })?;
+                for _ in 0..3 { self.advance(); }
+                self.add_token(TokenType::U16Literal(value));
+                return Ok(());
+            } else if remaining.starts_with("u32") {
+                let value = u32::from_str_radix(&hex_part, 16).map_err(|_| LexerError { message: format!("Failed to parse u32 hex literal '{}'", hex_part), line: self.line })?;
+                for _ in 0..3 { self.advance(); }
+                self.add_token(TokenType::U32Literal(value));
+                return Ok(());
+            } else if remaining.starts_with("u64") {
+                let value = u64::from_str_radix(&hex_part, 16).map_err(|_| LexerError { message: format!("Failed to parse u64 hex literal '{}'", hex_part), line: self.line })?;
+                for _ in 0..3 { self.advance(); }
+                self.add_token(TokenType::U64Literal(value));
+                return Ok(());
+            }
+        }
+
+        // Default: parse as i64 (or error for large unsigned without suffix)
+        match i64::from_str_radix(&hex_part, 16) {
+            Ok(mut value) => {
+                if is_negative { value = -value; }
+                self.add_token(TokenType::Integer(value));
+                Ok(())
+            }
+            Err(_) => {
+                // Try u64 if positive
+                if !is_negative {
+                    match u64::from_str_radix(&hex_part, 16) {
+                        Ok(value) => {
+                            if value > i64::MAX as u64 {
+                                return Err(LexerError { message: format!("Hex integer '{}' too large for default int; add 'u64' suffix", text_str), line: self.line });
+                            } else {
+                                self.add_token(TokenType::Integer(value as i64));
+                                Ok(())
+                            }
+                        }
+                        Err(e) => Err(LexerError { message: format!("Failed to parse hex integer '{}': {}", text_str, e), line: self.line }),
+                    }
+                } else {
+                    Err(LexerError { message: format!("Failed to parse hex integer '{}': number too large for i64", text_str), line: self.line })
+                }
+            }
+        }
     }
 
     fn parse_typed_integer<T: std::str::FromStr + std::fmt::Debug>(

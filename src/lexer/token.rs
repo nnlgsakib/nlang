@@ -59,6 +59,13 @@ pub enum TokenType {
     And,
     Or,
     Not,
+    // Bitwise and shifts
+    BitAnd,
+    BitOr,
+    BitXor,
+    BitNot,
+    ShiftLeft,
+    ShiftRight,
     
     // Delimiters
     LeftParen,

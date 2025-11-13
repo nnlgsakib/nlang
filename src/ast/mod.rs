@@ -222,12 +222,18 @@ pub enum BinaryOperator {
     GreaterEqual,
     And,
     Or,
+    BitAnd,
+    BitOr,
+    BitXor,
+    ShiftLeft,
+    ShiftRight,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub enum UnaryOperator {
     Negate,
     Not,
+    BitNot,
 }
 
 impl fmt::Display for Type {

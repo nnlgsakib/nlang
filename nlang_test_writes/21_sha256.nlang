@@ -1,0 +1,310 @@
+// SHA-256 demo implemented in Nlang with bitwise operations
+
+def pow2(n: int) -> int {
+    // 2^n
+    store result = 1;
+    store i = 0;
+    while (i < n) {
+        result = result * 2;
+        i = i + 1;
+    }
+    return result;
+}
+
+def get_bit(x: int, i: int) -> int {
+    // floor(x / 2^i) % 2
+    store div = (x * 1.0) / (pow2(i) * 1.0);
+    store q = int(div);
+    return q % 2;
+}
+
+def mask32(x: int) -> int { return x & 0xFFFFFFFF; }
+
+def from_bits32(b0: int, b1: int, b2: int, b3: int, b4: int, b5: int, b6: int, b7: int,
+                b8: int, b9: int, b10: int, b11: int, b12: int, b13: int, b14: int, b15: int,
+                b16: int, b17: int, b18: int, b19: int, b20: int, b21: int, b22: int, b23: int,
+                b24: int, b25: int, b26: int, b27: int, b28: int, b29: int, b30: int, b31: int) -> int {
+    store v = 0;
+    v = v + b0  * pow2(0);
+    v = v + b1  * pow2(1);
+    v = v + b2  * pow2(2);
+    v = v + b3  * pow2(3);
+    v = v + b4  * pow2(4);
+    v = v + b5  * pow2(5);
+    v = v + b6  * pow2(6);
+    v = v + b7  * pow2(7);
+    v = v + b8  * pow2(8);
+    v = v + b9  * pow2(9);
+    v = v + b10 * pow2(10);
+    v = v + b11 * pow2(11);
+    v = v + b12 * pow2(12);
+    v = v + b13 * pow2(13);
+    v = v + b14 * pow2(14);
+    v = v + b15 * pow2(15);
+    v = v + b16 * pow2(16);
+    v = v + b17 * pow2(17);
+    v = v + b18 * pow2(18);
+    v = v + b19 * pow2(19);
+    v = v + b20 * pow2(20);
+    v = v + b21 * pow2(21);
+    v = v + b22 * pow2(22);
+    v = v + b23 * pow2(23);
+    v = v + b24 * pow2(24);
+    v = v + b25 * pow2(25);
+    v = v + b26 * pow2(26);
+    v = v + b27 * pow2(27);
+    v = v + b28 * pow2(28);
+    v = v + b29 * pow2(29);
+    v = v + b30 * pow2(30);
+    v = v + b31 * pow2(31);
+    return v % 4294967296;
+}
+
+def rotr32(x: int, n: int) -> int {
+    return mask32(((x >> n) | (x << (32 - n))));
+}
+
+def shr32(x: int, n: int) -> int { return mask32(x >> n); }
+
+def bitxor32(a: int, b: int) -> int {
+    store i = 0;
+    store res = 0;
+    while (i < 32) {
+        store bit = (get_bit(a, i) + get_bit(b, i)) % 2;
+        res = res + bit * pow2(i);
+        i = i + 1;
+    }
+    return res % 4294967296;
+}
+
+def bitand32(a: int, b: int) -> int {
+    store i = 0;
+    store res = 0;
+    while (i < 32) {
+        store bit = get_bit(a, i) * get_bit(b, i);
+        res = res + bit * pow2(i);
+        i = i + 1;
+    }
+    return res % 4294967296;
+}
+
+def bitor32(a: int, b: int) -> int {
+    store i = 0;
+    store res = 0;
+    while (i < 32) {
+        store sum = get_bit(a, i) + get_bit(b, i);
+        store bit = 0;
+        if (sum > 0) { bit = 1; }
+        res = res + bit * pow2(i);
+        i = i + 1;
+    }
+    return res % 4294967296;
+}
+
+def bitnot32(x: int) -> int {
+    store i = 0;
+    store res = 0;
+    while (i < 32) {
+        store bit = 1 - get_bit(x, i);
+        res = res + bit * pow2(i);
+        i = i + 1;
+    }
+    return res % 4294967296;
+}
+
+def add32(a: int, b: int) -> int { return mask32(a + b); }
+def add32_3(a: int, b: int, c: int) -> int { return mask32(a + b + c); }
+def add32_4(a: int, b: int, c: int, d: int) -> int { return mask32(a + b + c + d); }
+def add32_5(a: int, b: int, c: int, d: int, e: int) -> int { return mask32(a + b + c + d + e); }
+
+def CAP_SIGMA0(x: int) -> int { return mask32(rotr32(x, 2) ^ rotr32(x, 13) ^ rotr32(x, 22)); }
+def CAP_SIGMA1(x: int) -> int { return mask32(rotr32(x, 6) ^ rotr32(x, 11) ^ rotr32(x, 25)); }
+def sigma0(x: int) -> int { return mask32(rotr32(x, 7) ^ rotr32(x, 18) ^ shr32(x, 3)); }
+def sigma1(x: int) -> int { return mask32(rotr32(x, 17) ^ rotr32(x, 19) ^ shr32(x, 10)); }
+
+def ch(x: int, y: int, z: int) -> int { return mask32((x & y) ^ ((~x) & z)); }
+def maj(x: int, y: int, z: int) -> int { return mask32((x & y) ^ (x & z) ^ (y & z)); }
+
+// Convert 32-bit int to 8-char lowercase hex string
+def hex8(x: int) -> string {
+    store hex = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "a", "b", "c", "d", "e", "f"];
+    store s = "";
+    store i = 7;
+    while (i >= 0) {
+        store shift = i * 4;
+        store nibble = (x >> shift) & 0xF;
+        s = s + hex[nibble];
+        i = i - 1;
+    }
+    return s;
+}
+
+// Read 4 bytes big-endian into 32-bit word
+def be32(b0: int, b1: int, b2: int, b3: int) -> int {
+    return (((b0 % 256) * pow2(24)) + ((b1 % 256) * pow2(16)) + ((b2 % 256) * pow2(8)) + (b3 % 256)) % 4294967296;
+}
+
+// Extract byte from 32-bit value
+def byte_at32(x: int, pos: int) -> int {
+    // pos 0..3 (0 is most significant)
+    store shift = (3 - pos) * 8;
+    return (x >> shift) & 0xFF;
+}
+
+// SHA-256 constants
+def k_at(i: int) -> int {
+    store K = [
+        1116352408, 1899447441, 3049323471, 3921009573, 961987163, 1508970993, 2453635748, 2870763221,
+        3624381080, 310598401, 607225278, 1426881987, 1925078388, 2162078206, 2614888103, 3248222580,
+        3835390401, 4022224774, 264347078, 604807628, 770255983, 1249150122, 1555081692, 1996064986,
+        2554220882, 2821834349, 2952996808, 3210313671, 3336571891, 3584528711, 113926993, 338241895,
+        666307205, 773529912, 1294757372, 1396182291, 1695183700, 1986661051, 2177026350, 2456956037,
+        2730485921, 2820302411, 3259730800, 3345764771, 3516065817, 3600352804, 4094571909, 275423344,
+        430227734, 506948616, 659060556, 883997877, 958139571, 1322822218, 1537002063, 1747873779,
+        1955562222, 2024104815, 2227730452, 2361852424, 2428436474, 2756734187, 3204031479, 3329325298
+    ];
+    return K[i];
+}
+
+// (no helper functions returning arrays; logic inlined in sha256)
+
+def sha256_bytes(bytes: [int;64], n: int) -> string {
+    // n is actual message length in bytes (<=64*1024 for demo). Processes streaming blocks.
+    // Initial hash values
+    store H:[int;8] = [1779033703, 3144134277, 1013904242, 2773480762, 1359893119, 2600822924, 528734635, 1541445756];
+
+    // Process full blocks
+    store total = n;
+    store idx = 0;
+    store blocks = int((total * 1.0) / 64.0);
+    store rem = total % 64;
+    store block:[int;64] = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+    store W:[int;64] = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                         0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+
+    store b = 0;
+    while (b < blocks) {
+        store j = 0;
+        while (j < 64) {
+            block[j] = bytes[idx + j];
+            j = j + 1;
+        }
+        // Compress block
+        store t2 = 0; while (t2 < 64) { W[t2] = 0; t2 = t2 + 1; }
+        t2 = 0;
+        while (t2 < 16) {
+            store j2 = t2 * 4;
+            W[t2] = be32(block[j2], block[(j2 + 1)], block[(j2 + 2)], block[(j2 + 3)]);
+            t2 = t2 + 1;
+        }
+        while (t2 < 64) {
+            store s0b = sigma0(W[(t2 - 15)]);
+            store s1b = sigma1(W[(t2 - 2)]);
+            W[t2] = add32_4(W[(t2 - 16)], s0b, W[(t2 - 7)], s1b);
+            t2 = t2 + 1;
+        }
+
+        store a2 = H[0]; store b2 = H[1]; store c2 = H[2]; store d2 = H[3];
+        store e2 = H[4]; store f2 = H[5]; store g2 = H[6]; store h2 = H[7];
+        t2 = 0;
+        while (t2 < 64) {
+            store T1b = add32_5(h2, CAP_SIGMA1(e2), ch(e2,f2,g2), k_at(t2), W[t2]);
+            store T2b = add32(CAP_SIGMA0(a2), maj(a2,b2,c2));
+            h2 = g2; g2 = f2; f2 = e2; e2 = add32(d2, T1b);
+            d2 = c2; c2 = b2; b2 = a2; a2 = add32(T1b, T2b);
+            t2 = t2 + 1;
+        }
+        H[0] = add32(H[0], a2); H[1] = add32(H[1], b2); H[2] = add32(H[2], c2); H[3] = add32(H[3], d2);
+        H[4] = add32(H[4], e2); H[5] = add32(H[5], f2); H[6] = add32(H[6], g2); H[7] = add32(H[7], h2);
+        idx = idx + 64;
+        b = b + 1;
+    }
+
+    // Build final one or two blocks with padding
+    store j = 0;
+    while (j < 64) { block[j] = 0; j = j + 1; }
+    j = 0;
+    while (j < rem) { block[j] = bytes[idx + j]; j = j + 1; }
+    block[rem] = 128; // 0x80
+
+    store bit_len = total * 8;
+    if (rem <= 55) {
+        // write length in last 8 bytes
+        store high = int((bit_len * 1.0) / 4294967296.0);
+        store low = bit_len % 4294967296;
+        block[56] = byte_at32(high, 0);
+        block[57] = byte_at32(high, 1);
+        block[58] = byte_at32(high, 2);
+        block[59] = byte_at32(high, 3);
+        block[60] = byte_at32(low, 0);
+        block[61] = byte_at32(low, 1);
+        block[62] = byte_at32(low, 2);
+        block[63] = byte_at32(low, 3);
+        // Compress padded block
+        store t3 = 0;
+        while (t3 < 16) { store j3 = t3 * 4; W[t3] = be32(block[j3], block[(j3 + 1)], block[(j3 + 2)], block[(j3 + 3)]); t3 = t3 + 1; }
+        while (t3 < 64) { W[t3] = add32_4(W[(t3 - 16)], sigma0(W[(t3 - 15)]), W[(t3 - 7)], sigma1(W[(t3 - 2)])); t3 = t3 + 1; }
+        store a3 = H[0]; store b3 = H[1]; store c3 = H[2]; store d3 = H[3]; store e3 = H[4]; store f3 = H[5]; store g3 = H[6]; store h3 = H[7];
+        t3 = 0; while (t3 < 64) { store T1c = add32_5(h3, CAP_SIGMA1(e3), ch(e3,f3,g3), k_at(t3), W[t3]); store T2c = add32(CAP_SIGMA0(a3), maj(a3,b3,c3)); h3 = g3; g3 = f3; f3 = e3; e3 = add32(d3, T1c); d3 = c3; c3 = b3; b3 = a3; a3 = add32(T1c, T2c); t3 = t3 + 1; }
+        H[0] = add32(H[0], a3); H[1] = add32(H[1], b3); H[2] = add32(H[2], c3); H[3] = add32(H[3], d3);
+        H[4] = add32(H[4], e3); H[5] = add32(H[5], f3); H[6] = add32(H[6], g3); H[7] = add32(H[7], h3);
+    } else {
+        // process first pad block
+        // First pad block
+        store t4 = 0; while (t4 < 16) { store j4 = t4 * 4; W[t4] = be32(block[j4], block[(j4 + 1)], block[(j4 + 2)], block[(j4 + 3)]); t4 = t4 + 1; }
+        while (t4 < 64) { W[t4] = add32_4(W[(t4 - 16)], sigma0(W[(t4 - 15)]), W[(t4 - 7)], sigma1(W[(t4 - 2)])); t4 = t4 + 1; }
+        store a4 = H[0]; store b4 = H[1]; store c4 = H[2]; store d4 = H[3]; store e4 = H[4]; store f4 = H[5]; store g4 = H[6]; store h4 = H[7];
+        t4 = 0; while (t4 < 64) { store T1d = add32_5(h4, CAP_SIGMA1(e4), ch(e4,f4,g4), k_at(t4), W[t4]); store T2d = add32(CAP_SIGMA0(a4), maj(a4,b4,c4)); h4 = g4; g4 = f4; f4 = e4; e4 = add32(d4, T1d); d4 = c4; c4 = b4; b4 = a4; a4 = add32(T1d, T2d); t4 = t4 + 1; }
+        H[0] = add32(H[0], a4); H[1] = add32(H[1], b4); H[2] = add32(H[2], c4); H[3] = add32(H[3], d4);
+        H[4] = add32(H[4], e4); H[5] = add32(H[5], f4); H[6] = add32(H[6], g4); H[7] = add32(H[7], h4);
+        // second block: all zeros except length
+        j = 0; while (j < 64) { block[j] = 0; j = j + 1; }
+        store high2 = int((bit_len * 1.0) / 4294967296.0);
+        store low2 = bit_len % 4294967296;
+        block[56] = byte_at32(high2, 0);
+        block[57] = byte_at32(high2, 1);
+        block[58] = byte_at32(high2, 2);
+        block[59] = byte_at32(high2, 3);
+        block[60] = byte_at32(low2, 0);
+        block[61] = byte_at32(low2, 1);
+        block[62] = byte_at32(low2, 2);
+        block[63] = byte_at32(low2, 3);
+        // Second pad block
+        store t5 = 0; while (t5 < 16) { store j5 = t5 * 4; W[t5] = be32(block[j5], block[(j5 + 1)], block[(j5 + 2)], block[(j5 + 3)]); t5 = t5 + 1; }
+        while (t5 < 64) { W[t5] = add32_4(W[(t5 - 16)], sigma0(W[(t5 - 15)]), W[(t5 - 7)], sigma1(W[(t5 - 2)])); t5 = t5 + 1; }
+        store a5 = H[0]; store b5 = H[1]; store c5 = H[2]; store d5 = H[3]; store e5 = H[4]; store f5 = H[5]; store g5 = H[6]; store h5 = H[7];
+        t5 = 0; while (t5 < 64) { store T1e = add32_5(h5, CAP_SIGMA1(e5), ch(e5,f5,g5), k_at(t5), W[t5]); store T2e = add32(CAP_SIGMA0(a5), maj(a5,b5,c5)); h5 = g5; g5 = f5; f5 = e5; e5 = add32(d5, T1e); d5 = c5; c5 = b5; b5 = a5; a5 = add32(T1e, T2e); t5 = t5 + 1; }
+        H[0] = add32(H[0], a5); H[1] = add32(H[1], b5); H[2] = add32(H[2], c5); H[3] = add32(H[3], d5);
+        H[4] = add32(H[4], e5); H[5] = add32(H[5], f5); H[6] = add32(H[6], g5); H[7] = add32(H[7], h5);
+    }
+
+    return hex8(H[0]) + hex8(H[1]) + hex8(H[2]) + hex8(H[3]) + hex8(H[4]) + hex8(H[5]) + hex8(H[6]) + hex8(H[7]);
+}
+
+def main() {
+    println("=== SHA-256 Pure Nlang (bitwise-enabled) ===");
+
+    // Test vector: "abc"
+    store msg:[int;64] = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                          0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+    msg[0] = 97; msg[1] = 98; msg[2] = 99;
+    store digest = sha256_bytes(msg, 3);
+    println("abc -> " + digest);
+    store digest_builtin_str = sha256("abc");
+    println("abc (builtin) -> " + digest_builtin_str);
+    store digest_builtin_bytes = sha256(msg);
+    println("abc bytes (builtin) -> " + digest_builtin_bytes);
+
+    // Test vector: empty string
+    store msg2:[int;64] = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+    store digest2 = sha256_bytes(msg2, 0);
+    println("empty -> " + digest2);
+    store digest2_builtin = sha256("");
+    println("empty (builtin) -> " + digest2_builtin);
+
+    // Random hash demo
+    store rnd_len = 32;
+    store rnd_hash_builtin = sha256_random(rnd_len);
+    println("random bytes (builtin) -> " + rnd_hash_builtin);
+}
