@@ -896,6 +896,13 @@ impl<'a> Parser<'a> {
                     });
                 };
                 self.consume(&TokenType::Identifier(prop_name.clone()), "Expected property name after '.'")?;
+                // Detect stray ')' indicating missing parentheses after method name
+                if self.check(&TokenType::RightParen) {
+                    return Err(ParseError {
+                        message: "Expected '(' after method name".to_string(),
+                        line: self.peek().line,
+                    });
+                }
                 expr = Expr::Get { object: Box::new(expr), name: prop_name };
             } else if self.match_token(&TokenType::LeftBracket) {
                 // Parse array indexing: array[index]
@@ -914,6 +921,9 @@ impl<'a> Parser<'a> {
         let mut arguments = Vec::new();
         
         if !self.check(&TokenType::RightParen) {
+            if self.check(&TokenType::Dot) {
+                return Err(ParseError { message: "Unexpected '.' in argument list; try closing ')' before chaining".to_string(), line: self.peek().line });
+            }
             loop {
                 arguments.push(self.expression()?);
                 if !self.match_token(&TokenType::Comma) {

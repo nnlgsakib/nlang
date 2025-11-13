@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use crate::diagnostics;
 use crate::execution_engine::ExecutionEngine;
 use crate::lexer::tokenize;
 use crate::parser::parse;
@@ -57,7 +58,10 @@ pub fn compile(input: PathBuf, output: Option<PathBuf>, generate_lex: bool, gene
     });
     
     // Compile to executable with file path for proper module resolution
-    engine.compile_to_executable_with_file_path(&source, module_name, &output_path, Some(&input))?;
+    if let Err(e) = engine.compile_to_executable_with_file_path(&source, module_name, &output_path, Some(&input)) {
+        let diag = diagnostics::from_execution_error(&input, &source, &e);
+        return Err(anyhow::anyhow!(diag));
+    }
     
     println!("Compiled successfully to: {}", output_path.display());
     Ok(())
@@ -206,8 +210,8 @@ pub fn run(input: PathBuf) -> anyhow::Result<()> {
             println!("Program executed successfully with exit code: {}", exit_code);
         }
         Err(e) => {
-            eprintln!("Execution error: {}", e);
-            return Err(e.into());
+            let diag = diagnostics::from_execution_error(&input, &source, &e);
+            return Err(anyhow::anyhow!(diag));
         }
     }
     

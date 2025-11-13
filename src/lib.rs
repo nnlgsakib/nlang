@@ -7,3 +7,4 @@ pub mod interpreter;
 pub mod execution_engine;
 pub mod std_lib;
 pub mod cli;
+pub mod diagnostics;

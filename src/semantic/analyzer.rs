@@ -1062,7 +1062,7 @@ impl SemanticAnalyzer {
                 
                 // Check that the value type matches the array element type
                 let value_type = self.infer_type(&analyzed_value)?;
-                if element_type != value_type {
+                if !self.are_types_compatible(&element_type, &value_type) {
                     return Err(SemanticError {
                         message: format!("Type mismatch in array assignment: expected {:?}, got {:?}", element_type, value_type),
                     });
