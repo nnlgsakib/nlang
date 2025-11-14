@@ -166,7 +166,11 @@ pub fn emit_basic(
         } else { sp.column };
         // Apply heuristics for call/parenthesis errors when column unknown
         if sp.column == 0 {
-            let is_unknown_method = title.to_lowercase().contains("unknown string method") || message.to_lowercase().contains("unknown string method");
+            let is_unknown_method = {
+                let tl = title.to_lowercase();
+                let ml = message.to_lowercase();
+                tl.contains("unknown string method") || ml.contains("unknown string method") || tl.contains("unknown array method") || ml.contains("unknown array method")
+            };
             if !is_unknown_method {
                 if let Some((hcol, _)) = analyze_line_for_call_errors(line_text) {
                     col = hcol;
@@ -209,7 +213,11 @@ pub fn emit_basic(
     if !help_used {
         if let Some(sp) = span.as_ref() {
             if let Some(line_text) = get_line(source, sp.line) {
-                let is_unknown_method = title.to_lowercase().contains("unknown string method") || message.to_lowercase().contains("unknown string method");
+                let is_unknown_method = {
+                    let tl = title.to_lowercase();
+                    let ml = message.to_lowercase();
+                    tl.contains("unknown string method") || ml.contains("unknown string method") || tl.contains("unknown array method") || ml.contains("unknown array method")
+                };
                 if !is_unknown_method {
                     if let Some((_, h)) = analyze_line_for_call_errors(line_text) {
                     out.push_str(&format!("   = {} {}\n", color::help_tag(), h));
@@ -264,7 +272,10 @@ pub fn from_execution_error(
                 if let Some(mname) = extract_unknown_method(&msg) {
                     span_opt = find_method_span(source, &mname);
                     if extra_help.is_none() {
-                        if let Some(help) = suggest_unknown_method(&mname) { extra_help = Some(help); }
+                        let lower = msg.to_lowercase();
+                        if lower.contains("unknown array method") {
+                            if let Some(help) = suggest_unknown_array_method(&mname) { extra_help = Some(help); }
+                        } else if let Some(help) = suggest_unknown_method(&mname) { extra_help = Some(help); }
                     }
                 }
             }
@@ -286,7 +297,10 @@ pub fn from_execution_error(
                 if let Some(mname) = extract_unknown_method(&msg) {
                     span_opt = find_method_span(source, &mname);
                     if extra_help.is_none() {
-                        if let Some(help) = suggest_unknown_method(&mname) { extra_help = Some(help); }
+                        let lower = msg.to_lowercase();
+                        if lower.contains("unknown array method") {
+                            if let Some(help) = suggest_unknown_array_method(&mname) { extra_help = Some(help); }
+                        } else if let Some(help) = suggest_unknown_method(&mname) { extra_help = Some(help); }
                     }
                 }
             }
@@ -341,6 +355,11 @@ fn extract_unknown_method(msg: &str) -> Option<String> {
         let name = name.trim_matches('"').trim().to_string();
         if !name.is_empty() { return Some(name); }
     }
+    if let Some(pos) = lower.find("unknown array method:") {
+        let name = msg[pos + "Unknown array method:".len()..].trim().to_string();
+        let name = name.trim_matches('"').trim().to_string();
+        if !name.is_empty() { return Some(name); }
+    }
     None
 }
 
@@ -369,6 +388,22 @@ fn suggest_unknown_method(bad: &str) -> Option<String> {
         }
     }
     best.map(|(s, _)| format!("help: unknown method. Did you mean: {}?", s))
+}
+
+fn suggest_unknown_array_method(bad: &str) -> Option<String> {
+    let known = ["len"]; 
+    let thr = if bad.len() <= 3 { 1 } else { 2 };
+    let mut best: Option<(&str, usize)> = None;
+    for k in known.iter() {
+        let d = edit_distance(bad, k);
+        if d > 0 && d <= thr {
+            match best {
+                Some((_prev, pd)) if pd <= d => {}
+                _ => best = Some((*k, d)),
+            }
+        }
+    }
+    best.map(|(s, _)| format!("help: unknown array method. Did you mean: {}?", s))
 }
 
 fn enrich_undefined_symbol(source: &str, message: &str) -> (Option<Span>, Option<String>) {
