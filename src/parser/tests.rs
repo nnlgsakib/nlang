@@ -146,4 +146,14 @@ mod tests {
             _ => panic!("Expected repeat-until statement"),
         }
     }
+
+    #[test]
+    fn test_leading_dot_method_error() {
+        let source = "store d = .upper();";
+        let tokens = tokenize(source).unwrap();
+        let result = parse(&tokens);
+        assert!(result.is_err());
+        let err = result.err().unwrap();
+        assert!(err.message.contains("missing receiver") || err.message.to_lowercase().contains("got dot"));
+    }
 }

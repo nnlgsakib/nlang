@@ -24,6 +24,27 @@ fn find_column_in_line(line_text: &str, needle: Option<&str>) -> usize {
 
 fn analyze_line_for_call_errors(line_text: &str) -> Option<(usize, String)> {
     let bytes = line_text.as_bytes();
+    let trimmed = line_text.trim_start();
+    if trimmed.starts_with("def ") {
+        if let Some(op) = line_text.find('(') {
+            let after = &line_text[op + 1..];
+            let close = after.find(')');
+            let arrow = line_text.find("->");
+            let brace = line_text.find('{');
+            if close.is_none() && (arrow.is_some() || brace.is_some()) {
+                return Some((op + 1, "help: add ')' after parameters; use '()' for none".to_string()));
+            }
+        }
+    }
+    if trimmed.starts_with('.') {
+        let leading_spaces = line_text.len() - trimmed.len();
+        return Some((leading_spaces + 1, "help: method call missing receiver; add an object before '.' (e.g., name.upper())".to_string()));
+    }
+    if line_text.contains("=.") || line_text.contains("= .") {
+        if let Some(pos) = line_text.find('.') {
+            return Some((pos + 1, "help: method call missing receiver; add an object before '.' (e.g., obj.method())".to_string()));
+        }
+    }
     for i in 0..bytes.len() {
         if bytes[i] == b'.' {
             let mut j = i + 1;
@@ -103,6 +124,12 @@ fn analyze_line_for_type_errors(line_text: &str) -> Option<(usize, String)> {
 
 fn suggest(message: &str) -> Option<String> {
     let m = message.to_lowercase();
+    if m.contains("missing receiver") || m.contains("got dot") {
+        return Some("help: method call missing receiver; add an object before '.'".to_string());
+    }
+    if m.contains("expected parameter name") {
+        return Some("help: add ')' after parameters; use '()' for none".to_string());
+    }
     if m.contains("expected ';'") || m.contains("expected ';' after") {
         Some("help: try adding a semicolon: ';'".to_string())
     } else if m.contains("expected '}'") {
@@ -161,7 +188,19 @@ pub fn emit_basic(
     out.push_str(&rendered);
     out.push('\n');
     out.push_str("   |\n");
-    out.push_str(&format!("   = {} {}\n", color::help_tag(), message));
+    // Avoid duplicating the main error message as a help when title already conveys it
+    let lt = title.to_lowercase();
+    let lm = message.to_lowercase();
+    let redundant =
+        (lt.contains("parser error") && lm.starts_with("parse error")) ||
+        (lt.contains("lexer error") && lm.starts_with("lexer error")) ||
+        (lt.contains("runtime error") && lm.starts_with("runtime error")) ||
+        (lt.contains("code generation error") && lm.starts_with("code generation error")) ||
+        (lt.contains("i/o error") && lm.starts_with("i/o error")) ||
+        (lt.contains("feature not implemented") && lm.starts_with("feature not implemented"));
+    if !redundant {
+        out.push_str(&format!("   = {} {}\n", color::help_tag(), message));
+    }
     let mut help_used = false;
     if let Some(help) = suggest(message) {
         out.push_str(&format!("   = {} {}\n", color::help_tag(), help));

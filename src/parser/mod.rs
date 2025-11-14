@@ -1073,6 +1073,13 @@ impl<'a> Parser<'a> {
             return Ok(Expr::ArrayLiteral { elements });
         }
         
+        if matches!(self.peek().token_type, TokenType::Dot) {
+            return Err(ParseError {
+                message: "Method call missing receiver: '.' cannot start an expression".to_string(),
+                line: self.peek().line,
+            });
+        }
+
         Err(ParseError {
             message: format!("Expected expression, got {:?}", self.peek().token_type),
             line: self.peek().line,
