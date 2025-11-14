@@ -30,6 +30,10 @@ pub struct CCodeGenerator {
     need_str_trim: bool,
     need_str_contains: bool,
     bool_vars: std::collections::HashMap<String, bool>,
+    need_vault: bool,
+    need_pool: bool,
+    need_tree: bool,
+    var_kinds: std::collections::HashMap<String, String>,
 }
 impl CCodeGenerator {
     pub fn new() -> Self {
@@ -49,10 +53,15 @@ impl CCodeGenerator {
             need_str_trim: false,
             need_str_contains: false,
             bool_vars: Default::default(),
+            need_vault: false,
+            need_pool: false,
+            need_tree: false,
+            var_kinds: Default::default(),
         };
         generator.line("#include <stdio.h>");
         generator.line("#include <string.h>");
         generator.line("#include <stdlib.h>");
+        generator.line("#include <stdarg.h>");
         generator.line("#include <math.h>");
         generator.line("#include <stdint.h>"); // For int32_t
         generator.line("#include <time.h>");
@@ -184,6 +193,9 @@ pub fn generate_program(mut self, prog: &Program) -> Result<String, CCodeGenErro
     self.extract_function_return_types(prog);
     self.emit_string_consts()?;
     if self.need_sha_helpers { self.emit_sha_helpers(); }
+    if self.need_vault { self.emit_vault_runtime(); }
+    if self.need_pool { self.emit_pool_runtime(); }
+    if self.need_tree { self.emit_tree_runtime(); }
     // Emit string helpers unconditionally to avoid missing prototypes/definitions
     self.emit_str_upper();
     self.emit_str_lower();
@@ -255,6 +267,9 @@ fn scan_expr(&mut self, e: &Expr) {
         Expr::Call { callee, arguments, .. } => {
             if let Expr::Variable(name) = callee.as_ref() {
                 if name == "sha256" || name == "sha256_random" { self.need_sha_helpers = true; }
+                if name == "vault" { self.need_vault = true; }
+                if name == "pool" { self.need_pool = true; }
+                if name == "tree" { self.need_tree = true; }
             }
             if let Expr::Get { object, name } = callee.as_ref() {
                 let t = self.infer_type(object);
@@ -675,6 +690,25 @@ fn emit_stmt(&mut self, stmt: &Statement) -> Result<(), CCodeGenError> {
                 ty.clone()
             };
             self.vars.insert(name.clone(), var_type_to_store);
+            if let Some(declared_type) = var_type {
+                match declared_type {
+                    Type::Vault(_, _) => { self.var_kinds.insert(name.clone(), "vault".to_string()); self.need_vault = true; },
+                    Type::Pool(_) => { self.var_kinds.insert(name.clone(), "pool".to_string()); self.need_pool = true; },
+                    Type::Tree(_) => { self.var_kinds.insert(name.clone(), "tree".to_string()); self.need_tree = true; },
+                    _ => {}
+                }
+            } else if let Some(init) = initializer {
+                if let Expr::Call { callee, .. } = init {
+                    if let Expr::Variable(fname) = callee.as_ref() {
+                        match fname.as_str() {
+                            "vault" => { self.var_kinds.insert(name.clone(), "vault".to_string()); self.need_vault = true; },
+                            "pool" => { self.var_kinds.insert(name.clone(), "pool".to_string()); self.need_pool = true; },
+                            "tree" => { self.var_kinds.insert(name.clone(), "tree".to_string()); self.need_tree = true; },
+                            _ => {}
+                        }
+                    }
+                }
+            }
             if let Some(Type::Boolean) = var_type { self.bool_vars.insert(name.clone(), true); }
             if let Some(init) = initializer {
                 let init_code = self.emit_expr(init)?;
@@ -974,8 +1008,34 @@ fn emit_expr(&mut self, e: &Expr) -> Result<String, CCodeGenError> {
                                 if i < parts.len() - 1 {
                                     if arg_idx < arguments.len() {
                                         let arg = &arguments[arg_idx];
-                                        let arg_code = self.emit_expr(arg)?;
-                                        let (fmt, val) = self.print_fmt(arg, &arg_code)?;
+                                        let (fmt, val) = {
+                                            if let Expr::Index { sequence, index } = arg {
+                                                if let Expr::Variable(var_name) = sequence.as_ref() {
+                                                    if self.var_kinds.get(var_name).map(|s| s == "vault").unwrap_or(false) {
+                                                        let seq_code = self.emit_expr(sequence)?;
+                                                        let idx_code = self.emit_expr(index)?;
+                                                        ("%s".into(), format!("(vault_get_tag({seq_code}, {idx_code})==1 ? vault_get_str({seq_code}, {idx_code}) : int_to_str((int)vault_get_int({seq_code}, {idx_code})))"))
+                                                    } else {
+                                                        let arg_code = self.emit_expr(arg)?;
+                                                        self.print_fmt(arg, &arg_code)?
+                                                    }
+                                                } else {
+                                                    let arg_code = self.emit_expr(arg)?;
+                                                    self.print_fmt(arg, &arg_code)?
+                                                }
+                                            } else if let Expr::Variable(name) = arg {
+                                                if self.var_kinds.get(name).map(|s| s == "tree").unwrap_or(false) {
+                                                    let arg_code = self.emit_expr(arg)?;
+                                                    ("%s".into(), format!("tree_to_str({})", arg_code))
+                                                } else {
+                                                    let arg_code = self.emit_expr(arg)?;
+                                                    self.print_fmt(arg, &arg_code)?
+                                                }
+                                            } else {
+                                                let arg_code = self.emit_expr(arg)?;
+                                                self.print_fmt(arg, &arg_code)?
+                                            }
+                                        };
                                         final_fmt.push_str(&fmt);
                                         vals.push(val);
                                         arg_idx += 1;
@@ -988,8 +1048,34 @@ fn emit_expr(&mut self, e: &Expr) -> Result<String, CCodeGenError> {
                             // Handle remaining arguments
                             while arg_idx < arguments.len() {
                                 let arg = &arguments[arg_idx];
-                                let arg_code = self.emit_expr(arg)?;
-                                let (fmt, val) = self.print_fmt(arg, &arg_code)?;
+                                let (fmt, val) = {
+                                    if let Expr::Index { sequence, index } = arg {
+                                        if let Expr::Variable(var_name) = sequence.as_ref() {
+                                            if self.var_kinds.get(var_name).map(|s| s == "vault").unwrap_or(false) {
+                                                let seq_code = self.emit_expr(sequence)?;
+                                                let idx_code = self.emit_expr(index)?;
+                                                ("%s".into(), format!("(vault_get_tag({seq_code}, {idx_code})==1 ? vault_get_str({seq_code}, {idx_code}) : int_to_str((int)vault_get_int({seq_code}, {idx_code})))"))
+                                            } else {
+                                                let arg_code = self.emit_expr(arg)?;
+                                                self.print_fmt(arg, &arg_code)?
+                                            }
+                                        } else {
+                                            let arg_code = self.emit_expr(arg)?;
+                                            self.print_fmt(arg, &arg_code)?
+                                        }
+                                    } else if let Expr::Variable(name) = arg {
+                                        if self.var_kinds.get(name).map(|s| s == "tree").unwrap_or(false) {
+                                            let arg_code = self.emit_expr(arg)?;
+                                            ("%s".into(), format!("tree_to_str({})", arg_code))
+                                        } else {
+                                            let arg_code = self.emit_expr(arg)?;
+                                            self.print_fmt(arg, &arg_code)?
+                                        }
+                                    } else {
+                                        let arg_code = self.emit_expr(arg)?;
+                                        self.print_fmt(arg, &arg_code)?
+                                    }
+                                };
                                 final_fmt.push_str(" ");
                                 final_fmt.push_str(&fmt);
                                 vals.push(val);
@@ -1018,8 +1104,34 @@ fn emit_expr(&mut self, e: &Expr) -> Result<String, CCodeGenError> {
                     let mut fmts = Vec::new();
                     let mut vals = Vec::new();
                     for arg in arguments {
-                        let arg_code = self.emit_expr(arg)?;
-                        let (fmt, val) = self.print_fmt(arg, &arg_code)?;
+                        let (fmt, val) = {
+                            if let Expr::Index { sequence, index } = arg {
+                                if let Expr::Variable(var_name) = sequence.as_ref() {
+                                    if self.var_kinds.get(var_name).map(|s| s == "vault").unwrap_or(false) {
+                                        let seq_code = self.emit_expr(sequence)?;
+                                        let idx_code = self.emit_expr(index)?;
+                                        ("%s".into(), format!("(vault_get_tag({seq_code}, {idx_code})==1 ? vault_get_str({seq_code}, {idx_code}) : int_to_str((int)vault_get_int({seq_code}, {idx_code})))"))
+                                    } else {
+                                        let arg_code = self.emit_expr(arg)?;
+                                        self.print_fmt(arg, &arg_code)?
+                                    }
+                                } else {
+                                    let arg_code = self.emit_expr(arg)?;
+                                    self.print_fmt(arg, &arg_code)?
+                                }
+                            } else if let Expr::Variable(name) = arg {
+                                if self.var_kinds.get(name).map(|s| s == "tree").unwrap_or(false) {
+                                    let arg_code = self.emit_expr(arg)?;
+                                    ("%s".into(), format!("tree_to_str({})", arg_code))
+                                } else {
+                                    let arg_code = self.emit_expr(arg)?;
+                                    self.print_fmt(arg, &arg_code)?
+                                }
+                            } else {
+                                let arg_code = self.emit_expr(arg)?;
+                                self.print_fmt(arg, &arg_code)?
+                            }
+                        };
                         fmts.push(fmt);
                         vals.push(val);
                     }
@@ -1126,6 +1238,29 @@ fn emit_expr(&mut self, e: &Expr) -> Result<String, CCodeGenError> {
                 }
                 _ => {}
             }
+            if fname == "vault" {
+                self.need_vault = true;
+                return Ok("vault()".to_string());
+            }
+            if fname == "pool" {
+                self.need_pool = true;
+                // encode as varargs with type tags
+                let mut args_code = Vec::new();
+                args_code.push(format!("{}", arguments.len()));
+                for a in arguments {
+                    let ac = self.emit_expr(a)?;
+                    let at = self.infer_type(a);
+                    let tag = if at == "double" { 1 } else if at == "const char*" || at == "char*" { 3 } else { 0 };
+                    args_code.push(tag.to_string());
+                    args_code.push(ac);
+                }
+                return Ok(format!("pool({})", args_code.join(", ")));
+            }
+            if fname == "tree" {
+                self.need_tree = true;
+                let acs: Vec<_> = arguments.iter().map(|a| self.emit_expr(a)).collect::<Result<_,_>>()?;
+                return Ok(format!("tree({})", acs.join(", ")));
+            }
             let args: Vec<_> = arguments.iter().map(|a| self.emit_expr(a)).collect::<Result<_, _>>()?;
             format!("{}({})", fname, args.join(", "))
         }
@@ -1136,14 +1271,33 @@ fn emit_expr(&mut self, e: &Expr) -> Result<String, CCodeGenError> {
             format!("({name} = {v})")
         }
         Expr::AssignIndex { sequence, index, value } => {
-            // Handle array assignment: arr[i] = value
             let seq_code = self.emit_expr(sequence)?;
+            // vault special-case
+            if let Expr::Variable(var_name) = sequence.as_ref() {
+                if self.var_kinds.get(var_name).map(|s| s == "vault").unwrap_or(false) {
+                    let idx_code = self.emit_expr(index)?;
+                    let val_code = self.emit_expr(value)?;
+                    let vt = self.infer_type(value);
+                    if vt == "const char*" || vt == "char*" {
+                        return Ok(format!("vault_set_str({seq_code}, {idx_code}, {val_code})"));
+                    } else {
+                        return Ok(format!("vault_set_int({seq_code}, {idx_code}, (long)({val_code}))"));
+                    }
+                }
+            }
             let idx_code = self.emit_expr(index)?;
             let val_code = self.emit_expr(value)?;
             format!("({seq_code}[{idx_code}] = {val_code})")
         }
         Expr::Index { sequence, index } => {
             let seq_code = self.emit_expr(sequence)?;
+            if let Expr::Variable(var_name) = sequence.as_ref() {
+                if self.var_kinds.get(var_name).map(|s| s == "vault").unwrap_or(false) {
+                    let idx_code = self.emit_expr(index)?;
+                    // default to int
+                    return Ok(format!("vault_get_int({seq_code}, {idx_code})"));
+                }
+            }
             let idx_code = self.emit_expr(index)?;
             format!("({seq_code}[{idx_code}])")
         }
@@ -1229,6 +1383,9 @@ fn type_to_c(&self, t: &Type) -> String {
         Type::Tuple(_) => "void*".into(),
         Type::Union(_) => "void*".into(),
         Type::Result(_, _) => "void*".into(),
+        Type::Vault(_, _) => "void*".into(),
+        Type::Pool(_) => "void*".into(),
+        Type::Tree(_) => "void*".into(),
     }
 }
 
@@ -1384,6 +1541,8 @@ fn infer_type(&self, e: &Expr) -> String {
             match callee.as_ref() {
                 Expr::Variable(func_name) => {
                     match func_name.as_str() {
+                        "vault_get_str" => "char*".into(),
+                        "vault_get_int" => "int".into(),
                         "str" => "char*".into(),
                         "input" => "char*".into(),
                         "str_concat" => "char*".into(),
@@ -1461,6 +1620,37 @@ fn infer_type(&self, e: &Expr) -> String {
         },
         _ => "int".into(),
     }
+}
+
+fn emit_vault_runtime(&mut self) {
+    self.empty();
+    self.line("// Simple vault (string -> tagged value)");
+    self.line("typedef struct { const char* key; int tag; long ival; const char* sval; } VaultKV;");
+    self.line("typedef struct { VaultKV* items; size_t size; size_t cap; } Vault;");
+    self.line("static void* vault(){ Vault* v = (Vault*)malloc(sizeof(Vault)); v->items=NULL; v->size=0; v->cap=0; return v; }");
+    self.line("static int vault_find(Vault* v, const char* key){ for(size_t i=0;i<v->size;i++){ if(strcmp(v->items[i].key,key)==0) return (int)i; } return -1; }");
+    self.line("static void vault_ensure(Vault* v){ if(v->size>=v->cap){ size_t nc = v->cap? v->cap*2:8; v->items = (VaultKV*)realloc(v->items, nc*sizeof(VaultKV)); v->cap=nc; } }");
+    self.line("static void vault_set_int(void* vp, const char* key, long val){ Vault* v=(Vault*)vp; int idx=vault_find(v,key); if(idx<0){ vault_ensure(v); idx=(int)v->size++; v->items[idx].key=key; } v->items[idx].tag=0; v->items[idx].ival=val; v->items[idx].sval=NULL; }");
+    self.line("static void vault_set_str(void* vp, const char* key, const char* val){ Vault* v=(Vault*)vp; int idx=vault_find(v,key); if(idx<0){ vault_ensure(v); idx=(int)v->size++; v->items[idx].key=key; } v->items[idx].tag=1; v->items[idx].sval=val; }");
+    self.line("static long vault_get_int(void* vp, const char* key){ Vault* v=(Vault*)vp; int idx=vault_find(v,key); if(idx<0) return 0; if(v->items[idx].tag==0) return v->items[idx].ival; return 0; }");
+    self.line("static const char* vault_get_str(void* vp, const char* key){ Vault* v=(Vault*)vp; int idx=vault_find(v,key); if(idx<0) return \"\"; if(v->items[idx].tag==1) return v->items[idx].sval; return \"\"; }");
+    self.line("static int vault_get_tag(void* vp, const char* key){ Vault* v=(Vault*)vp; int idx=vault_find(v,key); if(idx<0) return -1; return v->items[idx].tag; }");
+}
+
+fn emit_pool_runtime(&mut self) {
+    self.empty();
+    self.line("// Simple pool (set) supporting int/double/string via varargs");
+    self.line("typedef struct { int tag; long ival; double fval; const char* sval; } PoolItem;");
+    self.line("typedef struct { PoolItem* items; size_t size; size_t cap; } Pool;");
+    self.line("static void* pool(int count, ...){ Pool* p=(Pool*)malloc(sizeof(Pool)); p->items=NULL; p->size=0; p->cap=0; va_list ap; va_start(ap,count); for(int i=0;i<count;i++){ int tag = va_arg(ap,int); PoolItem it; it.tag=tag; if(tag==0){ it.ival = va_arg(ap,long); } else if(tag==1){ it.fval = va_arg(ap,double); } else if(tag==3){ it.sval = va_arg(ap,const char*); } if(p->size>=p->cap){ size_t nc=p->cap? p->cap*2:8; p->items=(PoolItem*)realloc(p->items,nc*sizeof(PoolItem)); p->cap=nc; } p->items[p->size++]=it; } va_end(ap); return p; }");
+}
+
+fn emit_tree_runtime(&mut self) {
+    self.empty();
+    self.line("// Simple tree storing root string");
+    self.line("typedef struct { const char* root; } Tree;");
+    self.line("static void* tree(const char* root){ Tree* t=(Tree*)malloc(sizeof(Tree)); t->root=root; return t; }");
+    self.line("static char* tree_to_str(void* tp){ Tree* t=(Tree*)tp; const char* r = t? t->root : \"\"; size_t n = strlen(r)+7; char* out=(char*)malloc(n); if(!out) return NULL; snprintf(out,n,\"tree(%s)\", r); return out; }");
 }
 fn print_fmt(&self, e: &Expr, code: &str) -> Result<(String, String), CCodeGenError> {
     Ok(match e {

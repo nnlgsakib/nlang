@@ -754,7 +754,13 @@ impl SemanticAnalyzer {
                 for arg in arguments {
                     analyzed_arguments.push(self.analyze_expr(arg)?);
                 }
-
+                // Fast-path: allow pool/tree 'add' methods without namespace conversion
+                if let Expr::Get { object, name } = callee.as_ref() {
+                    if name == "add" {
+                        let analyzed_object = self.analyze_expr(*object.clone())?;
+                        return Ok(Expr::Call { callee: Box::new(Expr::Get { object: Box::new(analyzed_object), name: name.clone() }), arguments: analyzed_arguments });
+                    }
+                }
                 let func_name = match callee.as_ref() {
                     Expr::Variable(name) => name.clone(),
                     Expr::Get { object, name } => {
@@ -797,8 +803,27 @@ impl SemanticAnalyzer {
                                     }
                                 }
                             }
+                            Type::Pool(_) => {
+                                match name.as_str() {
+                                    "add" => {
+                                        if analyzed_arguments.len() != 1 { return Err(SemanticError { message: "Pool.add() expects 1 argument".to_string() }); }
+                                        return Ok(Expr::Call { callee: Box::new(Expr::Get { object: Box::new(analyzed_object), name: name.clone() }), arguments: analyzed_arguments });
+                                    }
+                                    _ => return Err(SemanticError { message: format!("Unknown pool method: {}", name) }),
+                                }
+                            }
+                            Type::Tree(_) => {
+                                match name.as_str() {
+                                    "add" => {
+                                        if analyzed_arguments.len() != 1 { return Err(SemanticError { message: "Tree.add() expects 1 argument".to_string() }); }
+                                        return Ok(Expr::Call { callee: Box::new(Expr::Get { object: Box::new(analyzed_object), name: name.clone() }), arguments: analyzed_arguments });
+                                    }
+                                    _ => return Err(SemanticError { message: format!("Unknown tree method: {}", name) }),
+                                }
+                            }
                             _ => {
-                                return Err(SemanticError { message: "Method calls supported only on string and array".to_string() });
+                                // Allow method call to be validated at runtime for other types
+                                return Ok(Expr::Call { callee: Box::new(Expr::Get { object: Box::new(analyzed_object), name: name.clone() }), arguments: analyzed_arguments });
                             }
                         }
                     }
@@ -806,6 +831,10 @@ impl SemanticAnalyzer {
                         return Err(SemanticError { message: "Complex function calls not yet supported".to_string() });
                     }
                 };
+
+                if func_name == "vault" || func_name == "pool" || func_name == "tree" {
+                    return Ok(Expr::Call { callee: Box::new(Expr::Variable(func_name)), arguments: analyzed_arguments });
+                }
 
                 if func_name == "print" || func_name == "println" {
                     // These are variadic, so we don't check argument count or types.
@@ -1038,46 +1067,31 @@ impl SemanticAnalyzer {
                 let analyzed_index = Box::new(self.analyze_expr(*index)?);
                 let analyzed_value = Box::new(self.analyze_expr(*value)?);
                 
-                // The sequence must be an array
                 let sequence_type = self.infer_type(&analyzed_sequence)?;
-                if !matches!(sequence_type, Type::Array(_, _)) {
-                    return Err(SemanticError {
-                        message: format!("Cannot index into non-array type: {:?}", sequence_type),
-                    });
+                match sequence_type {
+                    Type::Array(element_type, _) => {
+                        let index_type = self.infer_type(&analyzed_index)?;
+                        if !matches!(index_type, Type::Integer | Type::I8 | Type::I16 | Type::I32 | Type::I64 | Type::ISize | Type::U8 | Type::U16 | Type::U32 | Type::U64 | Type::USize) {
+                            return Err(SemanticError { message: format!("Array index must be integer type, got: {:?}", index_type) });
+                        }
+                        let value_type = self.infer_type(&analyzed_value)?;
+                        if !self.are_types_compatible(&element_type, &value_type) {
+                            return Err(SemanticError { message: format!("Type mismatch in array assignment: expected {:?}, got {:?}", element_type, value_type) });
+                        }
+                        if let Expr::Literal(literal) = analyzed_value.as_ref() { self.validate_literal_bounds(literal, &element_type)?; }
+                        Ok(Expr::AssignIndex { sequence: analyzed_sequence, index: analyzed_index, value: analyzed_value })
+                    }
+                    Type::Vault(_, val_t) => {
+                        let index_type = self.infer_type(&analyzed_index)?;
+                        if index_type != Type::String { return Err(SemanticError { message: "Vault key must be string".to_string() }); }
+                        let value_type = self.infer_type(&analyzed_value)?;
+                        if !self.are_types_compatible(&val_t, &value_type) {
+                            return Err(SemanticError { message: format!("Type mismatch in vault assignment: expected {:?}, got {:?}", val_t, value_type) });
+                        }
+                        Ok(Expr::AssignIndex { sequence: analyzed_sequence, index: analyzed_index, value: analyzed_value })
+                    }
+                    _ => Err(SemanticError { message: format!("Cannot index into non-array type: {:?}", sequence_type) }),
                 }
-                
-                // The index must be an integer type
-                let index_type = self.infer_type(&analyzed_index)?;
-                if !matches!(index_type, Type::Integer | Type::I8 | Type::I16 | Type::I32 | Type::I64 | Type::ISize | Type::U8 | Type::U16 | Type::U32 | Type::U64 | Type::USize) {
-                    return Err(SemanticError {
-                        message: format!("Array index must be integer type, got: {:?}", index_type),
-                    });
-                }
-                
-                // Extract the element type from the array type
-                let element_type = match sequence_type {
-                    Type::Array(inner_type, _) => *inner_type,
-                    _ => unreachable!(), // We already checked it's an array
-                };
-                
-                // Check that the value type matches the array element type
-                let value_type = self.infer_type(&analyzed_value)?;
-                if !self.are_types_compatible(&element_type, &value_type) {
-                    return Err(SemanticError {
-                        message: format!("Type mismatch in array assignment: expected {:?}, got {:?}", element_type, value_type),
-                    });
-                }
-                
-                // Validate literal bounds for integer types
-                if let Expr::Literal(literal) = analyzed_value.as_ref() {
-                    self.validate_literal_bounds(literal, &element_type)?;
-                }
-                
-                Ok(Expr::AssignIndex {
-                    sequence: analyzed_sequence,
-                    index: analyzed_index,
-                    value: analyzed_value,
-                })
             },
             Expr::ArrayLiteral { elements } => {
                 // Check array literal bounds (max 1024 elements)
@@ -1097,6 +1111,29 @@ impl SemanticAnalyzer {
                 self.infer_type(&Expr::ArrayLiteral { elements: analyzed_elements.clone() })?;
                 
                 Ok(Expr::ArrayLiteral { elements: analyzed_elements })
+            },
+            Expr::VaultLiteral { entries } => {
+                let mut analyzed: Vec<(String, Expr)> = Vec::new();
+                for (k, v) in entries {
+                    let v_an = self.analyze_expr(v)?;
+                    analyzed.push((k, v_an));
+                }
+                Ok(Expr::VaultLiteral { entries: analyzed })
+            },
+            Expr::PoolLiteral { elements } => {
+                let mut analyzed_elements = Vec::new();
+                for e in elements {
+                    analyzed_elements.push(self.analyze_expr(e)?);
+                }
+                Ok(Expr::PoolLiteral { elements: analyzed_elements })
+            },
+            Expr::TreeLiteral { root, children } => {
+                let root_an = Box::new(self.analyze_expr(*root)?);
+                let mut ch_an = Vec::new();
+                for c in children {
+                    ch_an.push(self.analyze_expr(c)?);
+                }
+                Ok(Expr::TreeLiteral { root: root_an, children: ch_an })
             },
             // Advanced expression types - not yet fully implemented
             Expr::Tuple { elements } => {
@@ -1402,7 +1439,13 @@ impl SemanticAnalyzer {
             Expr::Call { callee, arguments: _ } => {
                 match callee.as_ref() {
                     Expr::Variable(func_name) => {
-                        if func_name == "len" {
+                        if func_name == "vault" {
+                            return Ok(Type::Vault(Box::new(Type::String), Box::new(Type::Unknown)));
+                        } else if func_name == "pool" {
+                            return Ok(Type::Pool(Box::new(Type::Unknown)));
+                        } else if func_name == "tree" {
+                            return Ok(Type::Tree(Box::new(Type::Unknown)));
+                        } else if func_name == "len" {
                             return Ok(Type::Integer);
                         }
                         // Check built-in functions first
@@ -1500,42 +1543,28 @@ impl SemanticAnalyzer {
                 }
             },
             Expr::Index { sequence, index } => {
-                // Array indexing: sequence[index]
                 let sequence_type = self.infer_type(sequence)?;
                 let index_type = self.infer_type(index)?;
-                
-                // Validate that sequence is an array type
-                if let Type::Array(element_type, _) = sequence_type {
-                    // Validate that index is an integer type
-                    if index_type == Type::Integer || index_type == Type::I8 || index_type == Type::I16 || 
-                       index_type == Type::I32 || index_type == Type::I64 || index_type == Type::ISize ||
-                       index_type == Type::U8 || index_type == Type::U16 || index_type == Type::U32 ||
-                       index_type == Type::U64 || index_type == Type::USize {
-                        
-                        // Check for constant index bounds if possible
-                        if let Expr::Literal(Literal::Integer(index_value)) = index.as_ref() {
-                            // For array literals, check if index is out of bounds
-                            if let Expr::ArrayLiteral { elements } = sequence.as_ref() {
-                                let index_usize = *index_value as usize;
-                                if index_usize >= elements.len() {
-                                    return Err(SemanticError {
-                                        message: format!("Array index {} out of bounds for array of size {}", 
-                                                       index_value, elements.len()),
-                                    });
+                match sequence_type {
+                    Type::Array(element_type, _) => {
+                        if index_type == Type::Integer || index_type == Type::I8 || index_type == Type::I16 || index_type == Type::I32 || index_type == Type::I64 || index_type == Type::ISize || index_type == Type::U8 || index_type == Type::U16 || index_type == Type::U32 || index_type == Type::U64 || index_type == Type::USize {
+                            if let Expr::Literal(Literal::Integer(index_value)) = index.as_ref() {
+                                if let Expr::ArrayLiteral { elements } = sequence.as_ref() {
+                                    let index_usize = *index_value as usize;
+                                    if index_usize >= elements.len() {
+                                        return Err(SemanticError { message: format!("Array index {} out of bounds for array of size {}", index_value, elements.len()) });
+                                    }
                                 }
                             }
+                            Ok(*element_type)
+                        } else {
+                            Err(SemanticError { message: format!("Array index must be an integer type, got {:?}", index_type) })
                         }
-                        
-                        Ok(*element_type)
-                    } else {
-                        Err(SemanticError {
-                            message: format!("Array index must be an integer type, got {:?}", index_type),
-                        })
                     }
-                } else {
-                    Err(SemanticError {
-                        message: format!("Cannot index non-array type: {:?}", sequence_type),
-                    })
+                    Type::Vault(_key_t, val_t) => {
+                        if index_type == Type::String { Ok(*val_t) } else { Err(SemanticError { message: "Vault key must be string".to_string() }) }
+                    }
+                    _ => Err(SemanticError { message: format!("Cannot index non-array type: {:?}", sequence_type) }),
                 }
             },
             Expr::ArrayLiteral { elements } => {
@@ -1562,6 +1591,15 @@ impl SemanticAnalyzer {
                 
                 // Return array type with the element type and size
                 Ok(Type::Array(Box::new(first_type), elements.len()))
+            },
+            Expr::VaultLiteral { .. } => {
+                Ok(Type::Vault(Box::new(Type::String), Box::new(Type::Unknown)))
+            },
+            Expr::PoolLiteral { .. } => {
+                Ok(Type::Pool(Box::new(Type::Unknown)))
+            },
+            Expr::TreeLiteral { .. } => {
+                Ok(Type::Tree(Box::new(Type::Unknown)))
             },
             _ => {
                 Err(SemanticError {

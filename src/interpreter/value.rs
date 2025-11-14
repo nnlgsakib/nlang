@@ -2,6 +2,8 @@ use crate::ast::{Parameter, Statement, Type, Expr};
 use std::fmt;
 use super::error::InterpreterError;
 use std::sync::Arc;
+use std::collections::{HashMap, HashSet};
+use std::hash::{Hash, Hasher};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
@@ -10,6 +12,9 @@ pub enum Value {
     Boolean(bool),
     String(String),
     Array(Vec<Value>),
+    Vault(HashMap<String, Value>),
+    Pool(HashSet<SimpleValue>),
+    Tree(Box<TreeNode>),
     Lambda {
         parameters: Vec<Parameter>,
         body: Arc<Expr>,
@@ -35,6 +40,27 @@ impl fmt::Display for Value {
                 }
                 write!(f, "]")
             }
+            Value::Vault(map) => {
+                write!(f, "vault{{")?;
+                let mut first = true;
+                for (k, v) in map.iter() {
+                    if !first { write!(f, ", ")?; } else { first = false; }
+                    write!(f, "{}: {}", k, v)?;
+                }
+                write!(f, "}}")
+            }
+            Value::Pool(set) => {
+                write!(f, "pool{{")?;
+                let mut first = true;
+                for v in set.iter() {
+                    if !first { write!(f, ", ")?; } else { first = false; }
+                    write!(f, "{}", v)?;
+                }
+                write!(f, "}}")
+            }
+            Value::Tree(node) => {
+                write!(f, "tree({})", node.value)
+            }
             Value::Lambda { .. } => write!(f, "<lambda function>"),
         }
     }
@@ -56,6 +82,9 @@ impl Value {
             Value::Boolean(_) => "bool",
             Value::String(_) => "string",
             Value::Array(_) => "array",
+            Value::Vault(_) => "vault",
+            Value::Pool(_) => "pool",
+            Value::Tree(_) => "tree",
             Value::Lambda { .. } => "lambda",
         }
     }
@@ -94,4 +123,69 @@ impl Value {
             }),
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SimpleValue {
+    Integer(i64),
+    Float(i64),
+    Boolean(bool),
+    String(String),
+}
+
+impl Hash for SimpleValue {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            SimpleValue::Integer(i) => {
+                0u8.hash(state);
+                i.hash(state);
+            }
+            SimpleValue::Float(fscaled) => {
+                1u8.hash(state);
+                fscaled.hash(state);
+            }
+            SimpleValue::Boolean(b) => {
+                2u8.hash(state);
+                b.hash(state);
+            }
+            SimpleValue::String(s) => {
+                3u8.hash(state);
+                s.hash(state);
+            }
+        }
+    }
+}
+
+impl fmt::Display for SimpleValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SimpleValue::Integer(i) => write!(f, "{}", i),
+            SimpleValue::Float(fi) => write!(f, "{}", (*fi as f64) / 1_000_000.0),
+            SimpleValue::Boolean(b) => write!(f, "{}", b),
+            SimpleValue::String(s) => write!(f, "{}", s),
+        }
+    }
+}
+
+impl SimpleValue {
+    pub fn from_value(v: Value) -> Result<SimpleValue, InterpreterError> {
+        match v {
+            Value::Integer(i) => Ok(SimpleValue::Integer(i)),
+            Value::Float(f) => Ok(SimpleValue::Float((f * 1_000_000.0) as i64)),
+            Value::Boolean(b) => Ok(SimpleValue::Boolean(b)),
+            Value::String(s) => Ok(SimpleValue::String(s)),
+            _ => Err(InterpreterError::InvalidOperation { message: "Pool supports int, float, bool, string".to_string() }),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TreeNode {
+    pub value: SimpleValue,
+    pub children: Vec<TreeNode>,
+}
+
+impl TreeNode {
+    pub fn new(value: SimpleValue) -> Self { Self { value, children: Vec::new() } }
+    pub fn add_child(&mut self, child: SimpleValue) { self.children.push(TreeNode::new(child)); }
 }

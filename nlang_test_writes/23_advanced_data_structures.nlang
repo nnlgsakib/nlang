@@ -1,0 +1,116 @@
+// Advanced Data Structures Demo: vault (map), pool (set), tree (tree)
+
+def show_vault_demo() {
+    println("-- vault (map) demo --");
+    
+    // Create an empty vault and populate it
+    store users = vault();
+    users["Alice"] = 25;
+    users["Bob"]   = 31;
+    users["Carol"] = 29;
+
+    // Read and update values
+    println("Alice age:", users["Alice"]);
+    users["Alice"] = users["Alice"] + 1;
+    println("Happy birthday Alice:", users["Alice"]);
+
+    // Store various value types
+    users["Active"] = true;
+    users["Note"]   = "VIP";
+    println("Users[Active]:", users["Active"]);
+    println("Users[Note]:", users["Note"]);
+
+    // Use a vault to aggregate counts coming from set/tree operations later
+    store counts = vault();
+    counts["initialized"] = 1;
+    println("Counts[initialized]:", counts["initialized"]);
+}
+
+def show_vault_ops() {
+    println("-- vault operations --");
+    store scores = vault();
+    println("Missing key before:", scores["GameA"]);
+    scores["GameA"] = scores["GameA"] + 10;
+    println("After +10:", scores["GameA"]);
+    scores["GameA"] = scores["GameA"] + 5;
+    println("After +5:", scores["GameA"]);
+    scores["Title"] = "Great Game";
+    println("Title:", scores["Title"]);
+}
+
+def show_pool_demo() {
+    println("-- pool (set) demo --");
+
+    // Start with classic primes; add duplicates and new values
+    store primes = pool(2, 3, 5, 7);
+    println("Primes initialized.");
+
+    // Mixed-type set; duplicates eliminated
+    store mixed = pool(1, 2.5, "x", true);
+    println("Mixed set initialized.");
+}
+
+def show_vault_matrix() {
+    println("-- vault as matrix --");
+    store grid = vault();
+    grid["r0c0"] = 1;
+    grid["r0c1"] = 2;
+    grid["r1c0"] = 3;
+    grid["r1c1"] = 4;
+    store sum = grid["r0c0"] + grid["r0c1"] + grid["r1c0"] + grid["r1c1"];
+    println("Grid sum:", sum);
+    grid["r1c1"] = grid["r1c1"] + 10;
+    println("r1c1 after +10:", grid["r1c1"]);
+}
+
+def show_tree_demo() {
+    println("-- tree (tree) demo --");
+
+    // Build a small family tree (children of root)
+    store family = tree("root");
+    println("Add children via tree(root, child1, child2) syntax coming next.");
+
+    // Print the root node (structure printing shows the root)
+    println("Family tree root:", family);
+}
+
+def show_config() {
+    println("-- config vault --");
+    store config = vault();
+    config["debug"] = true;
+    config["mode"] = "release";
+    config["retries"] = 3;
+    println("Config[mode]:", config["mode"]);
+    store dbg: bool = config["debug"];
+    if (dbg) {
+        println("Debug is on");
+    } else {
+        println("Debug is off");
+    }
+    println("Retries:", config["retries"]);
+}
+
+def show_tree_more() {
+    println("-- multiple trees --");
+    store t1 = tree("root-A");
+    store t2 = tree("root-B");
+    println("Tree A:", t1);
+    println("Tree B:", t2);
+}
+
+def main() {
+    println("=== Advanced Data Structures ===");
+    show_vault_demo();
+    println("");
+    show_vault_ops();
+    println("");
+    show_pool_demo();
+    println("");
+    show_vault_matrix();
+    println("");
+    show_tree_demo();
+    println("");
+    show_config();
+    println("");
+    show_tree_more();
+}

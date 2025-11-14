@@ -1,4 +1,5 @@
 use crate::ast::{Program, Statement, Expr, BinaryOperator, UnaryOperator, Literal};
+use crate::interpreter::value::{SimpleValue, TreeNode};
 use crate::lexer::Lexer;
 use crate::parser::Parser;
 use std::fs;
@@ -465,6 +466,35 @@ impl Interpreter {
                                     }
                                 }
                             }
+                            Value::Pool(mut set) => {
+                                match name.as_str() {
+                                    "add" => {
+                                        if arguments.len() != 1 { return Err(InterpreterError::InvalidOperation { message: "Pool.add() expects 1 argument".to_string() }); }
+                                        let v = self.evaluate_expression(&arguments[0], env)?;
+                                        let sv = SimpleValue::from_value(v)?;
+                                        set.insert(sv);
+                                        return Ok(Value::Integer(set.len() as i64));
+                                    }
+                                    _ => {
+                                        return Err(InterpreterError::InvalidOperation { message: format!("Unknown pool method: {}", name) });
+                                    }
+                                }
+                            }
+                            Value::Tree(node_box) => {
+                                let mut node = *node_box;
+                                match name.as_str() {
+                                    "add" => {
+                                        if arguments.len() != 1 { return Err(InterpreterError::InvalidOperation { message: "Tree.add() expects 1 argument".to_string() }); }
+                                        let v = self.evaluate_expression(&arguments[0], env)?;
+                                        let sv = SimpleValue::from_value(v)?;
+                                        node.add_child(sv);
+                                        return Ok(Value::Integer(node.children.len() as i64));
+                                    }
+                                    _ => {
+                                        return Err(InterpreterError::InvalidOperation { message: format!("Unknown tree method: {}", name) });
+                                    }
+                                }
+                            }
                             Value::Array(a) => {
                                 match name.as_str() {
                                     "len" => {
@@ -492,8 +522,28 @@ impl Interpreter {
                     }
                 };
 
-                // Handle built-in functions
+                // Handle built-in and constructors
                 match func_name.as_str() {
+                        "vault" => {
+                            if arguments.len() > 1 { return Err(InterpreterError::InvalidOperation { message: "vault() takes 0 or 1 arguments".to_string() }); }
+                            let map = std::collections::HashMap::new();
+                            Ok(Value::Vault(map))
+                        }
+                        "pool" => {
+                            let mut set = std::collections::HashSet::new();
+                            for arg_expr in arguments {
+                                let v = self.evaluate_expression(arg_expr, env)?;
+                                let sv = SimpleValue::from_value(v)?;
+                                set.insert(sv);
+                            }
+                            Ok(Value::Pool(set))
+                        }
+                        "tree" => {
+                            if arguments.len() != 1 { return Err(InterpreterError::InvalidOperation { message: "tree(root) expects 1 argument".to_string() }); }
+                            let root_v = self.evaluate_expression(&arguments[0], env)?;
+                            let root = SimpleValue::from_value(root_v)?;
+                            Ok(Value::Tree(Box::new(TreeNode::new(root))))
+                        }
                         "print" => {
                             let mut evaluated_args = Vec::new();
                             for arg_expr in arguments {
@@ -678,6 +728,7 @@ impl Interpreter {
                                 Value::Lambda { .. } => Err(InterpreterError::InvalidOperation {
                                     message: "Cannot convert lambda to string".to_string(),
                                 }),
+                                _ => Err(InterpreterError::InvalidOperation { message: "Cannot convert value to string".to_string() }),
                             }
                         }
                         "sha256" => {
@@ -771,6 +822,7 @@ impl Interpreter {
                                 Value::Lambda { .. } => Err(InterpreterError::InvalidOperation {
                                     message: "Cannot convert lambda to integer".to_string(),
                                 }),
+                                _ => Err(InterpreterError::InvalidOperation { message: "Cannot convert value to integer".to_string() }),
                             }
                         }
                         "float" => {
@@ -798,6 +850,7 @@ impl Interpreter {
                                 Value::Lambda { .. } => Err(InterpreterError::InvalidOperation {
                                     message: "Cannot convert lambda to float".to_string(),
                                 }),
+                                _ => Err(InterpreterError::InvalidOperation { message: "Cannot convert value to float".to_string() }),
                             }
                         }
                         "abs" => {
@@ -893,6 +946,18 @@ impl Interpreter {
                 let value_val = self.evaluate_expression(value, env)?;
                 
                 match (sequence_val, index_val) {
+                    (Value::Vault(mut map), Value::String(key)) => {
+                        map.insert(key.clone(), value_val.clone());
+                        match sequence.as_ref() {
+                            Expr::Variable(var_name) => {
+                                env.set_variable(var_name.clone(), Value::Vault(map))?;
+                            }
+                            _ => {
+                                return Err(InterpreterError::InvalidOperation { message: "Complex vault assignment not yet supported".to_string() });
+                            }
+                        }
+                        Ok(value_val)
+                    }
                     (Value::Array(mut arr), Value::Integer(idx)) => {
                         // Check bounds
                         if idx < 0 || idx >= arr.len() as i64 {
@@ -965,12 +1030,43 @@ impl Interpreter {
                 }
                 Ok(Value::Array(evaluated_elements))
             }
+            Expr::VaultLiteral { entries } => {
+                let mut map = std::collections::HashMap::new();
+                for (k, vexpr) in entries {
+                    let v = self.evaluate_expression(&vexpr, env)?;
+                    map.insert(k.clone(), v);
+                }
+                Ok(Value::Vault(map))
+            }
+            Expr::PoolLiteral { elements } => {
+                let mut set = std::collections::HashSet::new();
+                for e in elements {
+                    let v = self.evaluate_expression(e, env)?;
+                    let sv = crate::interpreter::value::SimpleValue::from_value(v)?;
+                    set.insert(sv);
+                }
+                Ok(Value::Pool(set))
+            }
+            Expr::TreeLiteral { root, children } => {
+                let rv = self.evaluate_expression(root, env)?;
+                let rs = crate::interpreter::value::SimpleValue::from_value(rv)?;
+                let mut node = crate::interpreter::value::TreeNode::new(rs);
+                for c in children {
+                    let cv = self.evaluate_expression(&c, env)?;
+                    let cs = crate::interpreter::value::SimpleValue::from_value(cv)?;
+                    node.add_child(cs);
+                }
+                Ok(Value::Tree(Box::new(node)))
+            }
             Expr::Index { sequence, index } => {
                 // Evaluate the sequence (array) and index
                 let sequence_val = self.evaluate_expression(sequence, env)?;
                 let index_val = self.evaluate_expression(index, env)?;
                 
                 match (sequence_val, index_val) {
+                    (Value::Vault(map), Value::String(key)) => {
+                        if let Some(v) = map.get(&key) { Ok(v.clone()) } else { Ok(Value::Integer(0)) }
+                    }
                     (Value::Array(arr), Value::Integer(idx)) => {
                         // Check bounds
                         if idx < 0 || idx >= arr.len() as i64 {
@@ -982,7 +1078,7 @@ impl Interpreter {
                         Ok(arr[idx as usize].clone())
                     }
                     _ => Err(InterpreterError::InvalidOperation {
-                        message: "Indexing only supported for arrays with integer indices".to_string(),
+                        message: "Indexing supported for arrays[int] and vault[string]".to_string(),
                     }),
                 }
             }
@@ -1296,5 +1392,74 @@ mod tests {
         let result = interpreter.execute_program(&program);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), 3);
+    }
+
+    #[test]
+    fn test_vault_index_assignment() {
+        let mut interpreter = Interpreter::new();
+        let program = Program {
+            statements: vec![
+                Statement::FunctionDeclaration {
+                    name: "main".to_string(),
+                    parameters: vec![],
+                    body: vec![
+                        Statement::LetDeclaration { name: "users".to_string(), initializer: Some(Expr::Call { callee: Box::new(Expr::Variable("vault".to_string())), arguments: vec![] }), var_type: Some(Type::Vault(Box::new(Type::String), Box::new(Type::Unknown))), is_exported: false },
+                        Statement::Expression(Expr::AssignIndex { sequence: Box::new(Expr::Variable("users".to_string())), index: Box::new(Expr::Literal(Literal::String("Alice".to_string()))), value: Box::new(Expr::Literal(Literal::Integer(25))) }),
+                        Statement::Return { value: Some(Box::new(Expr::Index { sequence: Box::new(Expr::Variable("users".to_string())), index: Box::new(Expr::Literal(Literal::String("Alice".to_string()))) })) },
+                    ],
+                    return_type: Some(Type::Integer),
+                    is_exported: false,
+                }
+            ],
+        };
+        let result = interpreter.execute_program(&program);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 25);
+    }
+
+    #[test]
+    fn test_pool_add_method() {
+        let mut interpreter = Interpreter::new();
+        let program = Program {
+            statements: vec![
+                Statement::FunctionDeclaration {
+                    name: "main".to_string(),
+                    parameters: vec![],
+                    body: vec![
+                        Statement::LetDeclaration { name: "primes".to_string(), initializer: Some(Expr::Call { callee: Box::new(Expr::Variable("pool".to_string())), arguments: vec![Expr::Literal(Literal::Integer(2)), Expr::Literal(Literal::Integer(3)), Expr::Literal(Literal::Integer(5))] }), var_type: Some(Type::Pool(Box::new(Type::Integer))), is_exported: false },
+                        Statement::Expression(Expr::Call { callee: Box::new(Expr::Get { object: Box::new(Expr::Variable("primes".to_string())), name: "add".to_string() }), arguments: vec![Expr::Literal(Literal::Integer(7))] }),
+                        Statement::Return { value: Some(Box::new(Expr::Literal(Literal::Integer(0)))) },
+                    ],
+                    return_type: Some(Type::Integer),
+                    is_exported: false,
+                }
+            ],
+        };
+        let result = interpreter.execute_program(&program);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 0);
+    }
+
+    #[test]
+    fn test_tree_add_method() {
+        let mut interpreter = Interpreter::new();
+        let program = Program {
+            statements: vec![
+                Statement::FunctionDeclaration {
+                    name: "main".to_string(),
+                    parameters: vec![],
+                    body: vec![
+                        Statement::LetDeclaration { name: "family".to_string(), initializer: Some(Expr::Call { callee: Box::new(Expr::Variable("tree".to_string())), arguments: vec![Expr::Literal(Literal::String("root".to_string()))] }), var_type: Some(Type::Tree(Box::new(Type::String))), is_exported: false },
+                        Statement::Expression(Expr::Call { callee: Box::new(Expr::Get { object: Box::new(Expr::Variable("family".to_string())), name: "add".to_string() }), arguments: vec![Expr::Literal(Literal::String("child1".to_string()))] }),
+                        Statement::Return { value: Some(Box::new(Expr::Literal(Literal::Integer(0)))) },
+                    ],
+                    return_type: Some(Type::Integer),
+                    is_exported: false,
+                }
+            ],
+        };
+        let result = interpreter.execute_program(&program);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 0);
     }
 }

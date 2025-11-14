@@ -111,6 +111,9 @@ pub enum Type {
     Result(Box<Type>, Box<Type>), // Result<T, E>
     Union(Vec<Type>),  // Union type
     Tuple(Vec<Type>),  // Tuple type
+    Vault(Box<Type>, Box<Type>),
+    Pool(Box<Type>),
+    Tree(Box<Type>),
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
@@ -171,6 +174,16 @@ pub enum Expr {
     Match {
         expression: Box<Expr>,
         cases: Vec<MatchCase>,
+    },
+    VaultLiteral {
+        entries: Vec<(String, Expr)>,
+    },
+    PoolLiteral {
+        elements: Vec<Expr>,
+    },
+    TreeLiteral {
+        root: Box<Expr>,
+        children: Vec<Expr>,
     },
 }
 
@@ -276,6 +289,9 @@ impl fmt::Display for Type {
                 let type_strings: Vec<String> = types.iter().map(|t| format!("{}", t)).collect();
                 write!(f, "({})", type_strings.join(", "))
             },
+            Type::Vault(k, v) => write!(f, "vault<{}, {}>", k, v),
+            Type::Pool(t) => write!(f, "pool<{}>", t),
+            Type::Tree(t) => write!(f, "tree<{}>", t),
         }
     }
 }

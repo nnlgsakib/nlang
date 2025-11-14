@@ -190,6 +190,56 @@ pub fn parse_call(parser: &mut super::Parser) -> Result<Expr, ParseError> {
             let index = parse_expression(parser)?;
             parser.consume(&TokenType::RightBracket, "Expected ']' after index expression")?;
             expr = Expr::Index { sequence: Box::new(expr), index: Box::new(index) };
+        } else if parser.match_token(&TokenType::LeftBrace) {
+            // Special collection literals following keywords vault/pool/tree
+            match expr {
+                Expr::Variable(ref name) if name == "vault" => {
+                    let mut entries: Vec<(String, Expr)> = Vec::new();
+                    if !parser.check(&TokenType::RightBrace) {
+                        loop {
+                            // keys must be string literals
+                            if !parser.match_token(&TokenType::String("".to_string())) {
+                                return Err(ParseError { message: "Expected string key in vault literal".to_string(), line: parser.peek().line });
+                            }
+                            let key_tok = parser.previous().clone();
+                            let key = if let TokenType::String(s) = key_tok.token_type { s } else { unreachable!() };
+                            parser.consume(&TokenType::Colon, "Expected ':' after key")?;
+                            let value_expr = parse_expression(parser)?;
+                            entries.push((key, value_expr));
+                            if !parser.match_token(&TokenType::Comma) { break; }
+                        }
+                    }
+                    parser.consume(&TokenType::RightBrace, "Expected '}' after vault entries")?;
+                    expr = Expr::VaultLiteral { entries };
+                }
+                Expr::Variable(ref name) if name == "pool" => {
+                    let mut elements: Vec<Expr> = Vec::new();
+                    if !parser.check(&TokenType::RightBrace) {
+                        loop {
+                            elements.push(parse_expression(parser)?);
+                            if !parser.match_token(&TokenType::Comma) { break; }
+                        }
+                    }
+                    parser.consume(&TokenType::RightBrace, "Expected '}' after pool elements")?;
+                    expr = Expr::PoolLiteral { elements };
+                }
+                Expr::Variable(ref name) if name == "tree" => {
+                    // tree literal: {root [ , child ... ]}
+                    if parser.check(&TokenType::RightBrace) {
+                        return Err(ParseError { message: "tree literal requires a root".to_string(), line: parser.peek().line });
+                    }
+                    let root = parse_expression(parser)?;
+                    let mut children: Vec<Expr> = Vec::new();
+                    while parser.match_token(&TokenType::Comma) {
+                        children.push(parse_expression(parser)?);
+                    }
+                    parser.consume(&TokenType::RightBrace, "Expected '}' after tree literal")?;
+                    expr = Expr::TreeLiteral { root: Box::new(root), children };
+                }
+                _ => {
+                    return Err(ParseError { message: "Unexpected '{' after expression".to_string(), line: parser.peek().line });
+                }
+            }
         } else {
             break;
         }
@@ -344,6 +394,60 @@ pub fn parse_primary(parser: &mut super::Parser) -> Result<Expr, ParseError> {
         let name = name.clone();
         parser.consume(&TokenType::Identifier(name.clone()), "Expected identifier")?;
         return Ok(Expr::Variable(name));
+    }
+    // Brace literals after identifiers 'vault', 'pool', 'tree'
+    if let TokenType::Identifier(name) = &parser.peek().token_type {
+        if name == "vault" {
+            parser.consume(&TokenType::Identifier(name.clone()), "Expected identifier")?;
+            if parser.match_token(&TokenType::LeftBrace) {
+                let mut entries: Vec<(String, Expr)> = Vec::new();
+                if !parser.check(&TokenType::RightBrace) {
+                    loop {
+                        if !parser.match_token(&TokenType::String("".to_string())) {
+                            return Err(ParseError { message: "Expected string key in vault literal".to_string(), line: parser.peek().line });
+                        }
+                        let key_tok = parser.previous().clone();
+                        let key = if let TokenType::String(s) = key_tok.token_type { s } else { unreachable!() };
+                        parser.consume(&TokenType::Colon, "Expected ':' after key")?;
+                        let value_expr = parse_expression(parser)?;
+                        entries.push((key, value_expr));
+                        if !parser.match_token(&TokenType::Comma) { break; }
+                    }
+                }
+                parser.consume(&TokenType::RightBrace, "Expected '}' after vault entries")?;
+                return Ok(Expr::VaultLiteral { entries });
+            }
+            return Ok(Expr::Variable("vault".to_string()));
+        } else if name == "pool" {
+            parser.consume(&TokenType::Identifier(name.clone()), "Expected identifier")?;
+            if parser.match_token(&TokenType::LeftBrace) {
+                let mut elements: Vec<Expr> = Vec::new();
+                if !parser.check(&TokenType::RightBrace) {
+                    loop {
+                        elements.push(parse_expression(parser)?);
+                        if !parser.match_token(&TokenType::Comma) { break; }
+                    }
+                }
+                parser.consume(&TokenType::RightBrace, "Expected '}' after pool elements")?;
+                return Ok(Expr::PoolLiteral { elements });
+            }
+            return Ok(Expr::Variable("pool".to_string()));
+        } else if name == "tree" {
+            parser.consume(&TokenType::Identifier(name.clone()), "Expected identifier")?;
+            if parser.match_token(&TokenType::LeftBrace) {
+                if parser.check(&TokenType::RightBrace) {
+                    return Err(ParseError { message: "tree literal requires a root".to_string(), line: parser.peek().line });
+                }
+                let root = parse_expression(parser)?;
+                let mut children: Vec<Expr> = Vec::new();
+                while parser.match_token(&TokenType::Comma) {
+                    children.push(parse_expression(parser)?);
+                }
+                parser.consume(&TokenType::RightBrace, "Expected '}' after tree literal")?;
+                return Ok(Expr::TreeLiteral { root: Box::new(root), children });
+            }
+            return Ok(Expr::Variable("tree".to_string()));
+        }
     }
     
     // Parenthesized expressions

@@ -80,7 +80,8 @@ fn analyze_line_for_type_errors(line_text: &str) -> Option<(usize, String)> {
     let known = [
         "int","i8","i16","i32","i64","isize",
         "u8","u16","u32","u64","usize",
-        "f32","f64","float","bool","string","void"
+        "f32","f64","float","bool","string","void",
+        "vault","pool","tree"
     ];
     // Tokenize identifiers with positions
     let bytes = line_text.as_bytes();
@@ -138,6 +139,12 @@ fn suggest(message: &str) -> Option<String> {
         Some("help: try adding a closing parenthesis: ')'".to_string())
     } else if m.contains("expected ']'") {
         Some("help: try adding a closing bracket: ']'".to_string())
+    } else if m.contains("vault key must be string") || m.contains("vault[string]") || m.contains("indexing supported for arrays[int] and vault[string]") {
+        Some("help: vault uses string keys; e.g., users[\"Alice\"]".to_string())
+    } else if m.contains("unknown pool method") {
+        Some("help: pool supports 'add(value)'".to_string())
+    } else if m.contains("unknown tree method") {
+        Some("help: tree supports 'add(child)'".to_string())
     } else if m.contains("expects") && m.contains("argument") {
         Some("help: check function signature and argument count".to_string())
     } else if m.contains("expected ','") {
@@ -275,6 +282,10 @@ pub fn from_execution_error(
                         let lower = msg.to_lowercase();
                         if lower.contains("unknown array method") {
                             if let Some(help) = suggest_unknown_array_method(&mname) { extra_help = Some(help); }
+                        } else if lower.contains("unknown pool method") {
+                            if let Some(help) = suggest_unknown_pool_method(&mname) { extra_help = Some(help); }
+                        } else if lower.contains("unknown tree method") {
+                            if let Some(help) = suggest_unknown_tree_method(&mname) { extra_help = Some(help); }
                         } else if let Some(help) = suggest_unknown_method(&mname) { extra_help = Some(help); }
                     }
                 }
@@ -300,6 +311,10 @@ pub fn from_execution_error(
                         let lower = msg.to_lowercase();
                         if lower.contains("unknown array method") {
                             if let Some(help) = suggest_unknown_array_method(&mname) { extra_help = Some(help); }
+                        } else if lower.contains("unknown pool method") {
+                            if let Some(help) = suggest_unknown_pool_method(&mname) { extra_help = Some(help); }
+                        } else if lower.contains("unknown tree method") {
+                            if let Some(help) = suggest_unknown_tree_method(&mname) { extra_help = Some(help); }
                         } else if let Some(help) = suggest_unknown_method(&mname) { extra_help = Some(help); }
                     }
                 }
@@ -357,6 +372,16 @@ fn extract_unknown_method(msg: &str) -> Option<String> {
     }
     if let Some(pos) = lower.find("unknown array method:") {
         let name = msg[pos + "Unknown array method:".len()..].trim().to_string();
+        let name = name.trim_matches('"').trim().to_string();
+        if !name.is_empty() { return Some(name); }
+    }
+    if let Some(pos) = lower.find("unknown pool method:") {
+        let name = msg[pos + "Unknown pool method:".len()..].trim().to_string();
+        let name = name.trim_matches('"').trim().to_string();
+        if !name.is_empty() { return Some(name); }
+    }
+    if let Some(pos) = lower.find("unknown tree method:") {
+        let name = msg[pos + "Unknown tree method:".len()..].trim().to_string();
         let name = name.trim_matches('"').trim().to_string();
         if !name.is_empty() { return Some(name); }
     }
@@ -594,4 +619,36 @@ fn edit_distance(a: &str, b: &str) -> usize {
         }
     }
     dp[a.len()][b.len()]
+}
+
+fn suggest_unknown_pool_method(bad: &str) -> Option<String> {
+    let known = ["add"]; 
+    let thr = if bad.len() <= 3 { 1 } else { 2 };
+    let mut best: Option<(&str, usize)> = None;
+    for k in known.iter() {
+        let d = edit_distance(bad, k);
+        if d > 0 && d <= thr {
+            match best {
+                Some((_prev, pd)) if pd <= d => {}
+                _ => best = Some((*k, d)),
+            }
+        }
+    }
+    best.map(|(s, _)| format!("help: unknown pool method. Did you mean: {}?", s))
+}
+
+fn suggest_unknown_tree_method(bad: &str) -> Option<String> {
+    let known = ["add"]; 
+    let thr = if bad.len() <= 3 { 1 } else { 2 };
+    let mut best: Option<(&str, usize)> = None;
+    for k in known.iter() {
+        let d = edit_distance(bad, k);
+        if d > 0 && d <= thr {
+            match best {
+                Some((_prev, pd)) if pd <= d => {}
+                _ => best = Some((*k, d)),
+            }
+        }
+    }
+    best.map(|(s, _)| format!("help: unknown tree method. Did you mean: {}?", s))
 }
