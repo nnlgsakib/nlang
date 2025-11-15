@@ -1,0 +1,11 @@
+export def max(a) -> int {
+    store n = len(a);
+    if (n == 0) {
+        return 0;
+    }
+    store m = a[0];
+    for (store i = 1; i < n; i = i + 1) {
+        if (a[i] > m) { m = a[i]; }
+    }
+    return m;
+}

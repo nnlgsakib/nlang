@@ -1,0 +1,7 @@
+export def abs_float(x: float) -> float {
+    if (x < 0.0) {
+        return 0.0 - x;
+    } else {
+        return x;
+    }
+}

@@ -34,6 +34,12 @@ pub struct CCodeGenerator {
     need_pool: bool,
     need_tree: bool,
     var_kinds: std::collections::HashMap<String, String>,
+    need_nstd_sum: bool,
+    need_nstd_min: bool,
+    need_nstd_max: bool,
+    need_nstd_sort: bool,
+    need_nstd_reverse: bool,
+    need_nstd_ipow: bool,
 }
 impl CCodeGenerator {
     pub fn new() -> Self {
@@ -57,6 +63,12 @@ impl CCodeGenerator {
             need_pool: false,
             need_tree: false,
             var_kinds: Default::default(),
+            need_nstd_sum: false,
+            need_nstd_min: false,
+            need_nstd_max: false,
+            need_nstd_sort: false,
+            need_nstd_reverse: false,
+            need_nstd_ipow: false,
         };
         generator.line("#include <stdio.h>");
         generator.line("#include <string.h>");
@@ -107,8 +119,8 @@ impl CCodeGenerator {
     generator.line("snprintf(buffer, sizeof(buffer), \"%d\", value);");
     generator.line("return buffer;");
     generator.pop();
-    generator.line("}");
-    generator.empty();
+        generator.line("}");
+        generator.empty();
 
         // SHA-256 helper will be emitted lazily when used
    
@@ -196,6 +208,17 @@ pub fn generate_program(mut self, prog: &Program) -> Result<String, CCodeGenErro
     if self.need_vault { self.emit_vault_runtime(); }
     if self.need_pool { self.emit_pool_runtime(); }
     if self.need_tree { self.emit_tree_runtime(); }
+    if self.need_nstd_sum || self.need_nstd_min || self.need_nstd_max || self.need_nstd_sort || self.need_nstd_reverse || self.need_nstd_ipow {
+        self.empty();
+        self.line("// Std array helpers (int variants)");
+        if self.need_nstd_ipow { self.line("static int nstd_ipow(int base, int exp){ int r=1; for(int i=0;i<exp;i++){ r*=base; } return r; }"); }
+        if self.need_nstd_sum { self.line("static int nstd_sum_int(const int* a, size_t n){ int s=0; for(size_t i=0;i<n;i++){ s+=a[i]; } return s; }"); }
+        if self.need_nstd_min { self.line("static int nstd_min_int(const int* a, size_t n){ if(n==0) return 0; int m=a[0]; for(size_t i=1;i<n;i++){ if(a[i]<m) m=a[i]; } return m; }"); }
+        if self.need_nstd_max { self.line("static int nstd_max_int(const int* a, size_t n){ if(n==0) return 0; int m=a[0]; for(size_t i=1;i<n;i++){ if(a[i]>m) m=a[i]; } return m; }"); }
+        if self.need_nstd_reverse { self.line("static void nstd_reverse_int(int* a, size_t n){ size_t i=0, j=n?n-1:0; while(i<j){ int tmp=a[i]; a[i]=a[j]; a[j]=tmp; i++; j--; } }"); }
+        if self.need_nstd_sort { self.line("static void nstd_sort_int(int* a, size_t n){ int swapped=1; while(swapped){ swapped=0; for(size_t i=1;i<n;i++){ if(a[i-1]>a[i]){ int tmp=a[i-1]; a[i-1]=a[i]; a[i]=tmp; swapped=1; } } if(n) n--; } }"); }
+        self.empty();
+    }
     // Emit string helpers unconditionally to avoid missing prototypes/definitions
     self.emit_str_upper();
     self.emit_str_lower();
@@ -270,6 +293,12 @@ fn scan_expr(&mut self, e: &Expr) {
                 if name == "vault" { self.need_vault = true; }
                 if name == "pool" { self.need_pool = true; }
                 if name == "tree" { self.need_tree = true; }
+                if name == "sum" { self.need_nstd_sum = true; }
+                if name == "min" { self.need_nstd_min = true; }
+                if name == "max" { self.need_nstd_max = true; }
+                if name == "pow" { self.need_nstd_ipow = true; }
+                if name == "sort" { self.need_nstd_sort = true; }
+                if name == "reverse" { self.need_nstd_reverse = true; }
             }
             if let Expr::Get { object, name } = callee.as_ref() {
                 let t = self.infer_type(object);
@@ -678,7 +707,14 @@ fn emit_stmt(&mut self, stmt: &Statement) -> Result<(), CCodeGenError> {
             let ty = if let Some(declared_type) = var_type {
                 self.type_to_c(declared_type)
             } else if let Some(init) = initializer {
-                self.infer_type(init)
+                // Special-case std array ops returning pointers
+                if let Expr::Call { callee, .. } = init {
+                    if let Expr::Variable(fname) = callee.as_ref() {
+                        if fname == "sort" || fname == "reverse" { "int*".to_string() } else { self.infer_type(init) }
+                    } else { self.infer_type(init) }
+                } else {
+                    self.infer_type(init)
+                }
             } else {
                 "int".to_string()
             };
@@ -711,6 +747,22 @@ fn emit_stmt(&mut self, stmt: &Statement) -> Result<(), CCodeGenError> {
             }
             if let Some(Type::Boolean) = var_type { self.bool_vars.insert(name.clone(), true); }
             if let Some(init) = initializer {
+                if let Expr::Call { callee, arguments, .. } = init {
+                    if let Expr::Variable(fname) = callee.as_ref() {
+                        if (fname == "sort" || fname == "reverse") && arguments.len() == 1 {
+                            let arg_code = self.emit_expr(&arguments[0])?;
+                            let len_code = match &arguments[0] {
+                                Expr::Variable(_vn) => format!("(sizeof({0}) / sizeof({0}[0]))", arg_code),
+                                _ => return Err(CCodeGenError::Unsupported("sort/reverse initializer requires array variable".into())),
+                            };
+                            if fname == "sort" { self.need_nstd_sort = true; } else { self.need_nstd_reverse = true; }
+                            self.vars.insert(name.clone(), "int*".to_string());
+                            self.line(&format!("int* {name} = (int*)({{ nstd_{op}_int({arg_code}, {len_code}); {arg_code}; }});",
+                                op= if fname=="sort" {"sort"} else {"reverse"}, arg_code=arg_code, len_code=len_code, name=name));
+                            return Ok(());
+                        }
+                    }
+                }
                 let init_code = self.emit_expr(init)?;
                 
                 // Handle array types specially - in C, arrays are declared as "type name[size1][size2]..."
@@ -957,19 +1009,17 @@ fn emit_expr(&mut self, e: &Expr) -> Result<String, CCodeGenError> {
             } else {
                 if let Expr::Get { object, name } = callee.as_ref() {
                     let obj_code = self.emit_expr(object)?;
-                    let obj_ty = self.infer_type(object);
-                    if obj_ty == "const char*" || obj_ty == "char*" {
-                        match name.as_str() {
-                            "upper" => { return Ok(format!("str_upper({})", obj_code)); }
-                            "lower" => { return Ok(format!("str_lower({})", obj_code)); }
-                            "trim" => { return Ok(format!("str_trim({})", obj_code)); }
-                            "contains" => {
-                                if arguments.len() != 1 { return Err(CCodeGenError::Unsupported("String.contains() expects 1 argument".into())); }
-                                let arg_code = self.emit_expr(&arguments[0])?;
-                                return Ok(format!("str_contains({}, {})", obj_code, arg_code));
-                            }
-                            _ => {}
+                    // String methods mapping first, regardless of static type
+                    match name.as_str() {
+                        "upper" => { return Ok(format!("str_upper({})", obj_code)); }
+                        "lower" => { return Ok(format!("str_lower({})", obj_code)); }
+                        "trim" => { return Ok(format!("str_trim({})", obj_code)); }
+                        "contains" => {
+                            if arguments.len() != 1 { return Err(CCodeGenError::Unsupported("String.contains() expects 1 argument".into())); }
+                            let arg_code = self.emit_expr(&arguments[0])?;
+                            return Ok(format!("str_contains({}, {})", obj_code, arg_code));
                         }
+                        _ => {}
                     }
                     if name == "len" {
                         if let Expr::Variable(var_name) = object.as_ref() {
@@ -979,6 +1029,13 @@ fn emit_expr(&mut self, e: &Expr) -> Result<String, CCodeGenError> {
                         }
                         return Ok(format!("(sizeof({}) / sizeof({}[0]))", obj_code, obj_code));
                     }
+                    // Namespace function calls: std.fn -> fn
+                    if let Expr::Variable(ns) = object.as_ref() {
+                        if ns == "std" {
+                            return Ok(name.clone());
+                        }
+                    }
+                    // Unsupported complex callee
                     return Err(CCodeGenError::Unsupported("complex callee".into()));
                 } else {
                     return Err(CCodeGenError::Unsupported("complex callee".into()));
@@ -1260,6 +1317,49 @@ fn emit_expr(&mut self, e: &Expr) -> Result<String, CCodeGenError> {
                 self.need_tree = true;
                 let acs: Vec<_> = arguments.iter().map(|a| self.emit_expr(a)).collect::<Result<_,_>>()?;
                 return Ok(format!("tree({})", acs.join(", ")));
+            }
+            // std helpers mapping
+            if fname == "sum" {
+                if arguments.len() != 1 { return Err(CCodeGenError::Unsupported("sum(arr) expects 1 argument".into())); }
+                let arg_code = self.emit_expr(&arguments[0])?;
+                let len_code = match &arguments[0] { Expr::Variable(_vn) => format!("(sizeof({0}) / sizeof({0}[0]))", arg_code), _ => return Err(CCodeGenError::Unsupported("sum() requires array variable".into())) };
+                self.need_nstd_sum = true;
+                return Ok(format!("nstd_sum_int({arg_code}, {len_code})"));
+            }
+            if fname == "min" {
+                if arguments.len() != 1 { return Err(CCodeGenError::Unsupported("min(arr) expects 1 argument".into())); }
+                let arg_code = self.emit_expr(&arguments[0])?;
+                let len_code = match &arguments[0] { Expr::Variable(_vn) => format!("(sizeof({0}) / sizeof({0}[0]))", arg_code), _ => return Err(CCodeGenError::Unsupported("min() requires array variable".into())) };
+                self.need_nstd_min = true;
+                return Ok(format!("nstd_min_int({arg_code}, {len_code})"));
+            }
+            if fname == "max" {
+                if arguments.len() != 1 { return Err(CCodeGenError::Unsupported("max(arr) expects 1 argument".into())); }
+                let arg_code = self.emit_expr(&arguments[0])?;
+                let len_code = match &arguments[0] { Expr::Variable(_vn) => format!("(sizeof({0}) / sizeof({0}[0]))", arg_code), _ => return Err(CCodeGenError::Unsupported("max() requires array variable".into())) };
+                self.need_nstd_max = true;
+                return Ok(format!("nstd_max_int({arg_code}, {len_code})"));
+            }
+            if fname == "pow" {
+                if arguments.len() != 2 { return Err(CCodeGenError::Unsupported("pow(base,exp) expects 2 arguments".into())); }
+                let b = self.emit_expr(&arguments[0])?;
+                let e = self.emit_expr(&arguments[1])?;
+                self.need_nstd_ipow = true;
+                return Ok(format!("nstd_ipow({b}, {e})"));
+            }
+            if fname == "sort" {
+                if arguments.len() != 1 { return Err(CCodeGenError::Unsupported("sort(arr) expects 1 argument".into())); }
+                let arg_code = self.emit_expr(&arguments[0])?;
+                let len_code = match &arguments[0] { Expr::Variable(_vn) => format!("(sizeof({0}) / sizeof({0}[0]))", arg_code), _ => return Err(CCodeGenError::Unsupported("sort() requires array variable".into())) };
+                self.need_nstd_sort = true;
+                return Ok(format!("({{ nstd_sort_int({arg_code}, {len_code}); {arg_code}; }})"));
+            }
+            if fname == "reverse" {
+                if arguments.len() != 1 { return Err(CCodeGenError::Unsupported("reverse(arr) expects 1 argument".into())); }
+                let arg_code = self.emit_expr(&arguments[0])?;
+                let len_code = match &arguments[0] { Expr::Variable(_vn) => format!("(sizeof({0}) / sizeof({0}[0]))", arg_code), _ => return Err(CCodeGenError::Unsupported("reverse() requires array variable".into())) };
+                self.need_nstd_reverse = true;
+                return Ok(format!("({{ nstd_reverse_int({arg_code}, {len_code}); {arg_code}; }})"));
             }
             let args: Vec<_> = arguments.iter().map(|a| self.emit_expr(a)).collect::<Result<_, _>>()?;
             format!("{}({})", fname, args.join(", "))
@@ -1548,11 +1648,21 @@ fn infer_type(&self, e: &Expr) -> String {
                         "str_concat" => "char*".into(),
                         "int_to_str" => "char*".into(),
                         "float_to_str" => "char*".into(),
+                        "str_upper" => "char*".into(),
+                        "str_lower" => "char*".into(),
+                        "str_trim" => "char*".into(),
+                        "str_contains" => "int".into(),
                         "sha256" => "char*".into(),
                         "int" => "int".into(),
                         "float" => "double".into(),
                         "abs" => "int".into(),
                         "abs_float" => "double".into(),
+                        "sum" => "int".into(),
+                        "min" => "int".into(),
+                        "max" => "int".into(),
+                        "pow" => "int".into(),
+                        "sort" => "int*".into(),
+                        "reverse" => "int*".into(),
                         _ => (*self.function_return_types).get(func_name)
                             .map(|s| s.as_str())
                             .unwrap_or("int")
@@ -1607,6 +1717,9 @@ fn infer_type(&self, e: &Expr) -> String {
                 // Extract element type from array types (e.g., "double[3]" -> "double")
                 if let Some(open_bracket) = full_type.find('[') {
                     full_type[..open_bracket].to_string()
+                } else if let Some(star_pos) = full_type.find('*') {
+                    // Pointer element type (e.g., "int*" -> "int")
+                    full_type[..star_pos].to_string()
                 } else {
                     full_type.into()
                 }

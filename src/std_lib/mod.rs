@@ -3,6 +3,7 @@
 
 pub mod functions;
 pub mod types;
+pub mod nlang;
 
 use crate::ast::{Expr, Type};
 use self::functions::*;

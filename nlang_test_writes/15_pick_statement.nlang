@@ -1,5 +1,6 @@
 // 15_pick_statement.nlang
 // This program demonstrates the new 'pick' (match/switch) statement feature.
+import std;
 
 def picker(day:i32) {
 

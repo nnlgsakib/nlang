@@ -1,6 +1,6 @@
 // Hello World - Basic nlang program
 // This demonstrates the simplest possible nlang program
-
+import std;
 def main() {
     store a:i32 = 123;
     store b:i8 = 23;

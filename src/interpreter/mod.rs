@@ -3,6 +3,7 @@ use crate::interpreter::value::{SimpleValue, TreeNode};
 use crate::lexer::Lexer;
 use crate::parser::Parser;
 use std::fs;
+use crate::std_lib::nlang::std_module;
 pub use self::error::InterpreterError;
 pub use self::value::{Value, Function};
 pub use self::environment::Environment;
@@ -86,13 +87,12 @@ impl Interpreter {
             if let Statement::FunctionDeclaration { name, parameters, body, return_type, is_exported } = statement {
                 if *is_exported {
                     let qualified_name = format!("{}.{}", namespace, name);
-                    let func = Function {
-                        name: qualified_name.clone(),
-                        parameters: parameters.clone(),
-                        body: body.clone(),
-                        return_type: return_type.clone(),
-                    };
-                    self.global_env.define_function(func);
+                    let func_ns = Function { name: qualified_name.clone(), parameters: parameters.clone(), body: body.clone(), return_type: return_type.clone() };
+                    self.global_env.define_function(func_ns);
+                    if module_path == "std" && alias.is_none() {
+                        let func_direct = Function { name: name.clone(), parameters: parameters.clone(), body: body.clone(), return_type: return_type.clone() };
+                        self.global_env.define_function(func_direct);
+                    }
                 }
             }
         }
@@ -105,7 +105,10 @@ impl Interpreter {
                         let mut temp_env = self.global_env.clone();
                         let value = self.evaluate_expression(init_expr, &mut temp_env)?;
                         let qualified_name = format!("{}.{}", namespace, name);
-                        self.global_env.define_variable(qualified_name, value);
+                        self.global_env.define_variable(qualified_name, value.clone());
+                        if module_path == "std" && alias.is_none() {
+                            self.global_env.define_variable(name.clone(), value);
+                        }
                     }
                 }
             }
@@ -155,6 +158,16 @@ impl Interpreter {
     }
     
     fn parse_module(&self, module_path: &str, importing_file: Option<&str>) -> Result<Program, InterpreterError> {
+        if module_path == "std" {
+            let content = std_module();
+            let mut lexer = Lexer::new(content);
+            let tokens = lexer.tokenize()
+                .map_err(|e| InterpreterError::InvalidOperation { message: format!("Lexer error in module {}: {:?}", module_path, e) })?;
+            let mut parser = Parser::new(&tokens);
+            let statements = parser.parse_program()
+                .map_err(|e| InterpreterError::InvalidOperation { message: format!("Parser error in module {}: {:?}", module_path, e) })?;
+            return Ok(Program { statements });
+        }
         let file_path = if let Some(importing_file) = importing_file {
             // Resolve relative to the importing file's directory
             let importing_dir = std::path::Path::new(importing_file)

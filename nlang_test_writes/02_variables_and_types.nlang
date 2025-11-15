@@ -1,6 +1,6 @@
 // Variables and Data Types
 // This demonstrates variable declaration and different data types in nlang
-
+import std;
 def main() {
     // Integer variables
     store age = 25;

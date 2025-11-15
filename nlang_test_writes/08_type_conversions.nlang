@@ -1,7 +1,7 @@
 // Type Conversions and Data Types
 // This demonstrates different data types and their usage in nlang
 // Note: nlang interpreter currently has limited type conversion functions
-
+import std;
 def main() {
     println("=== Data Types and Values ===");
     

@@ -4,6 +4,7 @@
 // ===================================================================
 // BASIC TYPE INFERENCE & EXPLICIT TYPES
 // ===================================================================
+import std;
 
 // Function with explicit return type (current parser requirement)
 def add_numbers(a: int, b: int) -> int {

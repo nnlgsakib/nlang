@@ -1,6 +1,6 @@
 // Control Flow - If/Else Statements
 // This demonstrates conditional statements and logical operations
-
+import std;
 def main() {
     println("=== Control Flow Examples ===");
     

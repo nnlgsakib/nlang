@@ -1,6 +1,6 @@
 // Utility Library - Math and String Utilities
 // This file demonstrates exportable functions that can be imported by other programs
-
+import std;
 // Export a function to calculate the area of a circle
 export def circle_area(radius) {
     store pi = 3.14159;

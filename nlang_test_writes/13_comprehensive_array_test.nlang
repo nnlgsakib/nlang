@@ -1,6 +1,7 @@
 // 13 - Comprehensive Array Test
 // Combined from all array test files to demonstrate complete array functionality
 // Note: Array assignment operations (arr[i] = value) are not supported in current nlang version
+import std;
 
 def main() {
     println("=== Array Functionality Test ===");

@@ -1,3 +1,5 @@
+import std;
+
 def main() {
     println("--- Multiple For Loops Test ---");
 

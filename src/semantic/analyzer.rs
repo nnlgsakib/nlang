@@ -22,6 +22,8 @@ pub struct SemanticAnalyzer {
     current_dir: PathBuf,
     // Advanced type inference engine
     type_inference: TypeInferenceEngine,
+    std_imported: bool,
+    allow_builtin_override: bool,
 }
 
 impl SemanticAnalyzer {
@@ -46,6 +48,8 @@ impl SemanticAnalyzer {
             module_cache: HashMap::new(),
             current_dir,
             type_inference: TypeInferenceEngine::new(),
+            std_imported: false,
+            allow_builtin_override: false,
         }
     }
     
@@ -199,15 +203,14 @@ impl SemanticAnalyzer {
             
             // Check if this is an import statement and collect imported function definitions
             if let Statement::Import { module, alias: _ } = &analyzed_stmt {
-                let module_path = self.resolve_module_path(module);
-                let module_info = self.load_module(&module_path)?;
-                
-                // Collect function definitions from the imported module
-                for (symbol_name, symbol) in &module_info.exported_symbols {
-                    if let Symbol::Function { return_type: _, parameters: _ } = symbol {
-                        // Get the actual function definition from the module
-                        if let Some(func_stmt) = self.find_function_definition_in_module(&module_path, symbol_name) {
-                            imported_function_definitions.push(func_stmt);
+                if module != "std" {
+                    let module_path = self.resolve_module_path(module);
+                    let module_info = self.load_module(&module_path)?;
+                    for (symbol_name, symbol) in &module_info.exported_symbols {
+                        if let Symbol::Function { return_type: _, parameters: _ } = symbol {
+                            if let Some(func_stmt) = self.find_function_definition_in_module(&module_path, symbol_name) {
+                                imported_function_definitions.push(func_stmt);
+                            }
                         }
                     }
                 }
@@ -519,7 +522,25 @@ impl SemanticAnalyzer {
                 Ok(Statement::Return { value: analyzed_value })
             },
             Statement::Import { module, alias } => {
-                // Resolve and load the module
+                if module == "std" {
+                    let module_info = self.load_std_module()?;
+                    self.std_imported = true;
+                    // Always provide a 'std' namespace
+                    self.define_symbol("std".to_string(), Symbol::Namespace { module_name: "std".to_string() })?;
+                    // Expose namespaced and direct symbols (override built-ins)
+                    let prev_override = self.allow_builtin_override;
+                    self.allow_builtin_override = true;
+                    for (symbol_name, symbol) in &module_info.exported_symbols {
+                        let namespaced_name = format!("std.{}", symbol_name);
+                        self.define_symbol(namespaced_name, symbol.clone())?;
+                        if !self.scopes.last().unwrap().contains_key(symbol_name) {
+                            self.define_symbol(symbol_name.clone(), symbol.clone())?;
+                        }
+                    }
+                    self.allow_builtin_override = prev_override;
+                    return Ok(Statement::Import { module, alias });
+                }
+                // Resolve and load non-std modules
                 let module_path = self.resolve_module_path(&module);
                 let module_info = self.load_module(&module_path)?;
                 
@@ -536,30 +557,35 @@ impl SemanticAnalyzer {
                 } else {
                     // Add all exported symbols directly to the current scope
                     for (symbol_name, symbol) in &module_info.exported_symbols {
-                        self.define_symbol(symbol_name.clone(), symbol.clone())?;
+                        if !self.scopes.last().unwrap().contains_key(symbol_name) {
+                            self.define_symbol(symbol_name.clone(), symbol.clone())?;
+                        }
                     }
                 }
                 
                 Ok(Statement::Import { module, alias })
             },
             Statement::ImportFrom { module, items } => {
-                // Resolve and load the module
-                let module_path = self.resolve_module_path(&module);
-                let module_info = self.load_module(&module_path)?;
+                let module_info = if module == "std" { 
+                    self.std_imported = true; 
+                    self.load_std_module()? 
+                } else {
+                    let module_path = self.resolve_module_path(&module);
+                    self.load_module(&module_path)?
+                };
                 
                 // Import specific items from the module
+                let prev_override = self.allow_builtin_override;
+                if module == "std" { self.allow_builtin_override = true; }
                 for (item, alias) in &items {
                     let symbol_name = alias.as_ref().unwrap_or(item);
-                    
-                    // Check if the item exists in the module's exported symbols
                     if let Some(symbol) = module_info.exported_symbols.get(item) {
                         self.define_symbol(symbol_name.clone(), symbol.clone())?;
                     } else {
-                        return Err(SemanticError {
-                            message: format!("Symbol '{}' not found in module '{}'", item, module),
-                        });
+                        return Err(SemanticError { message: format!("Symbol '{}' not found in module '{}'", item, module) });
                     }
                 }
+                self.allow_builtin_override = prev_override;
                 
                 Ok(Statement::ImportFrom { module, items })
             },
@@ -832,6 +858,19 @@ impl SemanticAnalyzer {
                     }
                 };
 
+                // Require std import for core std functions
+                let requires_std = matches!(func_name.as_str(),
+                    "print" | "println" | "len" | "int" | "float" | "str" | "sha256" | "sha256_random" | "add" | "multiply"
+                );
+                if requires_std && !self.std_imported {
+                    return Err(SemanticError { message: format!("Using std function '{}' without 'import std'", func_name) });
+                }
+
+                // Prefer user-defined/imported functions over built-ins
+                if let Ok(Symbol::Function { .. }) = self.get_symbol(&func_name) {
+                    return Ok(Expr::Call { callee: Box::new(Expr::Variable(func_name)), arguments: analyzed_arguments });
+                }
+
                 if func_name == "vault" || func_name == "pool" || func_name == "tree" {
                     return Ok(Expr::Call { callee: Box::new(Expr::Variable(func_name)), arguments: analyzed_arguments });
                 }
@@ -846,8 +885,8 @@ impl SemanticAnalyzer {
                     }
                     let arg_type = self.infer_type(&analyzed_arguments[0])?;
                     match arg_type {
-                        Type::String | Type::Array(_, _) => {
-                            // This is valid
+                        Type::String | Type::Array(_, _) | Type::Unknown => {
+                            // Valid or deferred to runtime
                         }
                         _ => {
                             return Err(SemanticError {
@@ -1090,6 +1129,13 @@ impl SemanticAnalyzer {
                         }
                         Ok(Expr::AssignIndex { sequence: analyzed_sequence, index: analyzed_index, value: analyzed_value })
                     }
+                    Type::Unknown => {
+                        let index_type = self.infer_type(&analyzed_index)?;
+                        if !matches!(index_type, Type::Integer | Type::I8 | Type::I16 | Type::I32 | Type::I64 | Type::ISize | Type::U8 | Type::U16 | Type::U32 | Type::U64 | Type::USize) {
+                            return Err(SemanticError { message: format!("Array index must be integer type, got: {:?}", index_type) });
+                        }
+                        Ok(Expr::AssignIndex { sequence: analyzed_sequence, index: analyzed_index, value: analyzed_value })
+                    }
                     _ => Err(SemanticError { message: format!("Cannot index into non-array type: {:?}", sequence_type) }),
                 }
             },
@@ -1212,9 +1258,7 @@ impl SemanticAnalyzer {
                     Symbol::Function { .. } => Err(SemanticError {
                         message: format!("Expected variable, found function: {}", name),
                     }),
-                    Symbol::Namespace { .. } => Err(SemanticError {
-                        message: format!("Cannot use namespace '{}' as a value", name),
-                    }),
+                    Symbol::Namespace { .. } => Ok(Type::Unknown),
                 }
             },
             Expr::Binary { left, operator, right } => {
@@ -1485,6 +1529,17 @@ impl SemanticAnalyzer {
                         }
                     },
                     Expr::Get { object, name } => {
+                        // Handle namespace function calls first (e.g., std.sum)
+                        if let Expr::Variable(namespace_name) = object.as_ref() {
+                            if let Ok(Symbol::Namespace { .. }) = self.get_symbol(namespace_name) {
+                                let qualified_name = format!("{}.{}", namespace_name, name);
+                                match self.get_symbol(&qualified_name) {
+                                    Ok(Symbol::Function { return_type, .. }) => return Ok(return_type),
+                                    Ok(_) => return Err(SemanticError { message: format!("'{}' is not a function", qualified_name) }),
+                                    Err(_) => return Err(SemanticError { message: format!("Undefined function: {}", qualified_name) }),
+                                }
+                            }
+                        }
                         let obj_type = self.infer_type(object)?;
                         match obj_type {
                             Type::String => {
@@ -1501,17 +1556,7 @@ impl SemanticAnalyzer {
                                 }
                             }
                             _ => {
-                                // Handle namespace function calls (e.g., math.add())
-                                if let Expr::Variable(namespace_name) = object.as_ref() {
-                                    let qualified_name = format!("{}.{}", namespace_name, name);
-                                    match self.get_symbol(&qualified_name) {
-                                        Ok(Symbol::Function { return_type, .. }) => Ok(return_type),
-                                        Ok(_) => Err(SemanticError { message: format!("'{}' is not a function", qualified_name) }),
-                                        Err(_) => Err(SemanticError { message: format!("Undefined function: {}", qualified_name) }),
-                                    }
-                                } else {
-                                    Err(SemanticError { message: "Complex function call expressions not yet supported".to_string() })
-                                }
+                                Err(SemanticError { message: "Complex function call expressions not yet supported".to_string() })
                             }
                         }
                     }
@@ -1564,6 +1609,13 @@ impl SemanticAnalyzer {
                     Type::Vault(_key_t, val_t) => {
                         if index_type == Type::String { Ok(*val_t) } else { Err(SemanticError { message: "Vault key must be string".to_string() }) }
                     }
+                    Type::Unknown => {
+                        if matches!(index_type, Type::Integer | Type::I8 | Type::I16 | Type::I32 | Type::I64 | Type::ISize | Type::U8 | Type::U16 | Type::U32 | Type::U64 | Type::USize) {
+                            Ok(Type::Unknown)
+                        } else {
+                            Err(SemanticError { message: "Index type must be integer for Unknown sequence".to_string() })
+                        }
+                    }
                     _ => Err(SemanticError { message: format!("Cannot index non-array type: {:?}", sequence_type) }),
                 }
             },
@@ -1610,12 +1662,6 @@ impl SemanticAnalyzer {
     }
     
     fn define_symbol(&mut self, name: String, symbol: Symbol) -> Result<(), SemanticError> {
-        // Check if it's a built-in function
-        if self.std_lib.is_builtin_function(&name) {
-            return Err(SemanticError {
-                message: format!("Cannot redefine built-in function '{}'", name),
-            });
-        }
         
         // Check if symbol already exists in current scope
         if self.scopes.last().unwrap().contains_key(&name) {
@@ -1718,6 +1764,21 @@ impl SemanticAnalyzer {
         self.module_cache.insert(module_path.to_path_buf(), module_info.clone());
         
         Ok(module_info)
+    }
+
+    fn load_std_module(&mut self) -> Result<ModuleInfo, SemanticError> {
+        let source = crate::std_lib::nlang::std_module();
+        let mut lexer = Lexer::new(source);
+        let tokens = lexer.tokenize().map_err(|e| SemanticError { message: format!("Lexer error in std module: {}", e) })?;
+        let mut parser = Parser::new(&tokens);
+        let program = parser.parse_program().map_err(|e| SemanticError { message: format!("Parser error in std module: {}", e) })?;
+        let mut module_analyzer = SemanticAnalyzer::new_with_file_path(None);
+        module_analyzer.std_imported = true;
+        module_analyzer.allow_builtin_override = true;
+        let analyzed_program = module_analyzer.analyze_program(Program { statements: program.clone() }, false)?;
+        let mut exported_symbols = HashMap::new();
+        self.extract_exported_symbols(&analyzed_program.statements, &mut exported_symbols)?;
+        Ok(ModuleInfo { exported_symbols, original_program: Program { statements: program } })
     }
     
     fn extract_exported_symbols(&self, statements: &[Statement], symbols: &mut HashMap<String, Symbol>) -> Result<(), SemanticError> {

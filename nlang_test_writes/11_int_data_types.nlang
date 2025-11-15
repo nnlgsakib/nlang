@@ -2,6 +2,7 @@
 // This program demonstrates various integer data types and their operations in nlang
 // Tests the enhanced type compatibility system for all integer types
 
+import std;
 def main() {
     println("=== Integer Data Types Test ===");
     println("");

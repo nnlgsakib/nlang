@@ -1,0 +1,17 @@
+// Demo: using std functions defined in embedded nlang stdlib
+
+import std;
+
+def main() {
+    println("=== std import demo ===");
+    store arr = [5, 3, 9, 1, 7];
+    println("sum:", sum(arr));
+    println("min:", min(arr));
+    println("max:", max(arr));
+    println("pow(2, 10):", pow(2, 10));
+    store sorted = sort(arr);
+    println("sorted[0]..sorted[4]:", sorted[0], sorted[1], sorted[2], sorted[3], sorted[4]);
+    store rev = reverse(sorted);
+    println("reverse[0]..reverse[4]:", rev[0], rev[1], rev[2], rev[3], rev[4]);
+    // abs functions available but omitted here to avoid unary checks in demo
+}

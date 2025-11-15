@@ -1,6 +1,6 @@
 // Loops - While, Break, and Continue
 // This demonstrates loop structures and control statements
-
+import std;
 def main() {
     println("=== Loop Examples ===");
     

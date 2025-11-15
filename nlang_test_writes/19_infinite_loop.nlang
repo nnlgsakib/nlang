@@ -1,3 +1,5 @@
+import std;
+
 def main() {
     println("=== Basic Infinite Loop with Break ===");
     store counter = 0;

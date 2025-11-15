@@ -1,4 +1,5 @@
 // Advanced Data Structures Demo: vault (map), pool (set), tree (tree)
+import std;
 
 def show_vault_demo() {
     println("-- vault (map) demo --");

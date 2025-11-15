@@ -1,6 +1,6 @@
 // Functions - Definition, Parameters, and Return Values
 // This demonstrates function creation and usage
-
+import std;
 // Function with no parameters and no return value
 def greet() {
     println("Hello from a function!");

@@ -1,6 +1,6 @@
 // String Operations
 // This demonstrates string manipulation and operations in nlang
-
+import std;
 def main() {
     println("=== String Operations ===");
     

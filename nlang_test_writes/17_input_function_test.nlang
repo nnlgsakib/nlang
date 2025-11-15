@@ -1,6 +1,7 @@
 // 17_input_function_test.nlang
 // This program demonstrates the use of the input() function.
 // This is an interactive test. Please enter input when prompted.
+import std;
 
 def main() {
     println("=== input() Function Test ===");

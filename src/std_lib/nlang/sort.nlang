@@ -1,0 +1,17 @@
+export def sort(a) {
+    store n = len(a);
+    store swapped = true;
+    while (swapped) {
+        swapped = false;
+        for (store i = 1; i < n; i = i + 1) {
+            if (a[i - 1] > a[i]) {
+                store tmp = a[i - 1];
+                a[i - 1] = a[i];
+                a[i] = tmp;
+                swapped = true;
+            }
+        }
+        n = n - 1;
+    }
+    return a;
+}

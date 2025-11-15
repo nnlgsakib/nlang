@@ -1,5 +1,6 @@
 // 16_len_function_test.nlang
 // This program demonstrates the use of the len() function on strings and arrays.
+import std;
 
 def main() {
     println("=== len() Function Test ===");

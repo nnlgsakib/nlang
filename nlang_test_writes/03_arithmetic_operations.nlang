@@ -1,6 +1,6 @@
 // Arithmetic Operations
 // This demonstrates various arithmetic operations in nlang
-
+import std;
 def main() {
     println("=== Arithmetic Operations ===");
     

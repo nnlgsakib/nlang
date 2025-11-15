@@ -1,3 +1,5 @@
+import std;
+
 def transform_text(s: string) -> string {
     return s.trim().upper();
 }

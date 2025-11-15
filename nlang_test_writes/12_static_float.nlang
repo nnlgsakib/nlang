@@ -1,5 +1,7 @@
 // Static float tests: f32/f64 types and scientific notation
+import std;
 import 06_functions;
+
 
 def main() {
     store a: f32 = 3.14;

@@ -1,4 +1,5 @@
 // SHA-256 demo implemented in Nlang with bitwise operations
+import std;
 
 def pow2(n: int) -> int {
     // 2^n

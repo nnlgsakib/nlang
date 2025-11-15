@@ -160,7 +160,6 @@ impl ExecutionEngine {
             analyze(program)?
         };
         
-        // Generate C code
         let c_generator = CCodeGenerator::new();
         Ok(c_generator.generate_program(&analyzed_program)?)
     }
