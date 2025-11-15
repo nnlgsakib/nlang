@@ -209,43 +209,33 @@ pub fn emit_basic(
     out.push_str(&rendered);
     out.push('\n');
     out.push_str("   |\n");
-    // Avoid duplicating the main error message as a help when title already conveys it
     let lt = title.to_lowercase();
-    let lm = message.to_lowercase();
-    let redundant =
-        (lt.contains("parser error") && lm.starts_with("parse error")) ||
-        (lt.contains("lexer error") && lm.starts_with("lexer error")) ||
-        (lt.contains("runtime error") && lm.starts_with("runtime error")) ||
-        (lt.contains("code generation error") && lm.starts_with("code generation error")) ||
-        (lt.contains("i/o error") && lm.starts_with("i/o error")) ||
-        (lt.contains("feature not implemented") && lm.starts_with("feature not implemented"));
-    if !redundant {
-        out.push_str(&format!("   = {} {}\n", color::help_tag(), message));
-    }
-    let mut help_used = false;
-    if let Some(help) = suggest(message) {
-        out.push_str(&format!("   = {} {}\n", color::help_tag(), help));
-        help_used = true;
-    }
-    if !help_used {
-        if let Some(sp) = span.as_ref() {
-            if let Some(line_text) = get_line(source, sp.line) {
-                let is_unknown_method = {
-                    let tl = title.to_lowercase();
-                    let ml = message.to_lowercase();
-                    tl.contains("unknown string method") || ml.contains("unknown string method") || tl.contains("unknown array method") || ml.contains("unknown array method")
-                };
-                if !is_unknown_method {
-                    if let Some((_, h)) = analyze_line_for_call_errors(line_text) {
-                    out.push_str(&format!("   = {} {}\n", color::help_tag(), h));
+    out.push_str(&format!("   = {} {}\n", color::error_tag(), color::bold(&color::red(message))));
+    let suppress_inline_help = lt.contains("semantic error") || lt.contains("runtime error");
+    if !suppress_inline_help {
+        let mut help_used = false;
+        if let Some(help) = suggest(message) {
+            out.push_str(&format!("   = {} {}\n", color::help_tag(), help));
+            help_used = true;
+        }
+        if !help_used {
+            if let Some(sp) = span.as_ref() {
+                if let Some(line_text) = get_line(source, sp.line) {
+                    let is_unknown_method = {
+                        let ml = message.to_lowercase();
+                        lt.contains("unknown string method") || ml.contains("unknown string method") || lt.contains("unknown array method") || ml.contains("unknown array method")
+                    };
+                    if !is_unknown_method {
+                        if let Some((_, h)) = analyze_line_for_call_errors(line_text) {
+                            out.push_str(&format!("   = {} {}\n", color::help_tag(), h));
+                        }
+                    }
+                    if lt.contains("expected type") {
+                        if let Some((_, h)) = analyze_line_for_type_errors(line_text) {
+                            out.push_str(&format!("   = {} {}\n", color::help_tag(), h));
+                        }
                     }
                 }
-                if title.to_lowercase().contains("expected type") {
-                    if let Some((_, h)) = analyze_line_for_type_errors(line_text) {
-                        out.push_str(&format!("   = {}\n", h));
-                    }
-                }
-                // Unknown method suggestions are added in from_execution_error; avoid duplication here
             }
         }
     }
@@ -285,6 +275,13 @@ pub fn from_execution_error(
             let msg = se.to_string();
             // Try to enrich with span and suggestions for unknown symbol or method
             let (mut span_opt, mut extra_help) = enrich_undefined_symbol(source, &msg);
+            let primary_msg = if let Some((kind, name)) = extract_undefined(&msg) {
+                match kind {
+                    "function" => format!("function '{}' not found", name),
+                    "variable" => format!("variable '{}' not found", name),
+                    _ => msg.clone(),
+                }
+            } else { msg.clone() };
             if span_opt.is_none() {
                 if let Some(mname) = extract_unknown_method(&msg) {
                     span_opt = find_method_span(source, &mname);
@@ -306,14 +303,24 @@ pub fn from_execution_error(
                 source,
                 span_opt,
                 None,
-                &msg,
+                &primary_msg,
             );
-            if let Some(help) = extra_help { rendered.push_str(&format!("   = {}\n", help)); }
+            if let Some(help) = extra_help {
+                let msg = help.strip_prefix("help: ").unwrap_or(&help);
+                rendered.push_str(&format!("   = {} {}\n", color::help_tag(), msg));
+            }
             rendered
         }
         ExecutionError::InterpreterError(ie) => {
             let msg = ie.to_string();
             let (mut span_opt, mut extra_help) = enrich_undefined_symbol(source, &msg);
+            let primary_msg = if let Some((kind, name)) = extract_undefined(&msg) {
+                match kind {
+                    "function" => format!("function '{}' not found", name),
+                    "variable" => format!("variable '{}' not found", name),
+                    _ => msg.clone(),
+                }
+            } else { msg.clone() };
             if span_opt.is_none() {
                 if let Some(mname) = extract_unknown_method(&msg) {
                     span_opt = find_method_span(source, &mname);
@@ -335,9 +342,12 @@ pub fn from_execution_error(
                 source,
                 span_opt,
                 None,
-                &msg,
+                &primary_msg,
             );
-            if let Some(help) = extra_help { rendered.push_str(&format!("   = {}\n", help)); }
+            if let Some(help) = extra_help {
+                let msg = help.strip_prefix("help: ").unwrap_or(&help);
+                rendered.push_str(&format!("   = {} {}\n", color::help_tag(), msg));
+            }
             rendered
         }
         ExecutionError::CCodeGenError(ce) => {
@@ -700,4 +710,57 @@ fn suggest_unknown_tree_method(bad: &str) -> Option<String> {
         }
     }
     best.map(|(s, _)| format!("help: unknown tree method. Did you mean: {}?", s))
+}
+
+pub fn resolve_span(
+    title: &str,
+    source: &str,
+    mut span: Span,
+    lexeme_hint: Option<&str>,
+    message: &str,
+) -> Span {
+    if span.line == 0 { span.line = 1; }
+    let line_text = get_line(source, span.line).unwrap_or("");
+    let mut col = if span.column == 0 { find_column_in_line(line_text, lexeme_hint) } else { span.column };
+    if span.column == 0 {
+        let is_unknown_method = {
+            let tl = title.to_lowercase();
+            let ml = message.to_lowercase();
+            tl.contains("unknown string method") || ml.contains("unknown string method") || tl.contains("unknown array method") || ml.contains("unknown array method")
+        };
+        if !is_unknown_method {
+            if let Some((hcol, _)) = analyze_line_for_call_errors(line_text) { col = hcol; }
+        }
+        if title.to_lowercase().contains("expected type") {
+            if let Some((tcol, _)) = analyze_line_for_type_errors(line_text) { col = tcol; }
+        }
+    }
+    Span { line: span.line, column: col }
+}
+
+pub fn semantic_span(source: &str, message: &str) -> Option<Span> {
+    let (mut span_opt, _) = enrich_undefined_symbol(source, message);
+    if span_opt.is_none() {
+        if let Some(mname) = extract_unknown_method(message) {
+            span_opt = find_method_span(source, &mname);
+        }
+    }
+    span_opt
+}
+
+pub fn semantic_extra_help(source: &str, message: &str) -> Option<String> {
+    let (_, mut extra_help) = enrich_undefined_symbol(source, message);
+    if extra_help.is_none() {
+        if let Some(mname) = extract_unknown_method(message) {
+            let lower = message.to_lowercase();
+            if lower.contains("unknown array method") {
+                if let Some(h) = suggest_unknown_array_method(&mname) { extra_help = Some(h); }
+            } else if lower.contains("unknown pool method") {
+                if let Some(h) = suggest_unknown_pool_method(&mname) { extra_help = Some(h); }
+            } else if lower.contains("unknown tree method") {
+                if let Some(h) = suggest_unknown_tree_method(&mname) { extra_help = Some(h); }
+            } else if let Some(h) = suggest_unknown_method(&mname) { extra_help = Some(h); }
+        }
+    }
+    extra_help
 }
