@@ -40,6 +40,14 @@ pub struct CCodeGenerator {
     need_nstd_sort: bool,
     need_nstd_reverse: bool,
     need_nstd_ipow: bool,
+    // String advanced helpers
+    need_str_split: bool,
+    need_str_join: bool,
+    need_str_replace: bool,
+    need_str_substring: bool,
+    need_str_regex: bool,
+    // Track dynamic array lengths
+    arr_len_vars: std::collections::HashMap<String, String>,
 }
 impl CCodeGenerator {
     pub fn new() -> Self {
@@ -69,6 +77,12 @@ impl CCodeGenerator {
             need_nstd_sort: false,
             need_nstd_reverse: false,
             need_nstd_ipow: false,
+            need_str_split: false,
+            need_str_join: false,
+            need_str_replace: false,
+            need_str_substring: false,
+            need_str_regex: false,
+            arr_len_vars: Default::default(),
         };
         generator.line("#include <stdio.h>");
         generator.line("#include <string.h>");
@@ -113,10 +127,10 @@ impl CCodeGenerator {
         generator.line("#endif");
         generator.empty();    // Add built-in string conversion functions
     generator.line("// Built-in string conversion functions");
-    generator.line("char* int_to_str(int value) {");
+    generator.line("char* int_to_str(int64_t value) {");
     generator.push();
     generator.line("static char buffer[20];");
-    generator.line("snprintf(buffer, sizeof(buffer), \"%d\", value);");
+    generator.line("snprintf(buffer, sizeof(buffer), \"%lld\", value);");
     generator.line("return buffer;");
     generator.pop();
         generator.line("}");
@@ -211,12 +225,26 @@ pub fn generate_program(mut self, prog: &Program) -> Result<String, CCodeGenErro
     if self.need_nstd_sum || self.need_nstd_min || self.need_nstd_max || self.need_nstd_sort || self.need_nstd_reverse || self.need_nstd_ipow {
         self.empty();
         self.line("// Std array helpers (int variants)");
-        if self.need_nstd_ipow { self.line("static int nstd_ipow(int base, int exp){ int r=1; for(int i=0;i<exp;i++){ r*=base; } return r; }"); }
-        if self.need_nstd_sum { self.line("static int nstd_sum_int(const int* a, size_t n){ int s=0; for(size_t i=0;i<n;i++){ s+=a[i]; } return s; }"); }
-        if self.need_nstd_min { self.line("static int nstd_min_int(const int* a, size_t n){ if(n==0) return 0; int m=a[0]; for(size_t i=1;i<n;i++){ if(a[i]<m) m=a[i]; } return m; }"); }
-        if self.need_nstd_max { self.line("static int nstd_max_int(const int* a, size_t n){ if(n==0) return 0; int m=a[0]; for(size_t i=1;i<n;i++){ if(a[i]>m) m=a[i]; } return m; }"); }
-        if self.need_nstd_reverse { self.line("static void nstd_reverse_int(int* a, size_t n){ size_t i=0, j=n?n-1:0; while(i<j){ int tmp=a[i]; a[i]=a[j]; a[j]=tmp; i++; j--; } }"); }
-        if self.need_nstd_sort { self.line("static void nstd_sort_int(int* a, size_t n){ int swapped=1; while(swapped){ swapped=0; for(size_t i=1;i<n;i++){ if(a[i-1]>a[i]){ int tmp=a[i-1]; a[i-1]=a[i]; a[i]=tmp; swapped=1; } } if(n) n--; } }"); }
+        if self.need_nstd_ipow { self.line("static int64_t nstd_ipow(int64_t base, int64_t exp){ int64_t r=1; for(int64_t i=0;i<exp;i++){ r*=base; } return r; }"); }
+        if self.need_nstd_sum { self.line("static int64_t nstd_sum_int(const int64_t* a, size_t n){ int64_t s=0; for(size_t i=0;i<n;i++){ s+=a[i]; } return s; }"); }
+        if self.need_nstd_min { self.line("static int64_t nstd_min_int(const int64_t* a, size_t n){ if(n==0) return 0; int64_t m=a[0]; for(size_t i=1;i<n;i++){ if(a[i]<m) m=a[i]; } return m; }"); }
+        if self.need_nstd_max { self.line("static int64_t nstd_max_int(const int64_t* a, size_t n){ if(n==0) return 0; int64_t m=a[0]; for(size_t i=1;i<n;i++){ if(a[i]>m) m=a[i]; } return m; }"); }
+        if self.need_nstd_reverse { self.line("static void nstd_reverse_int(int64_t* a, size_t n){ size_t i=0, j=n?n-1:0; while(i<j){ int64_t tmp=a[i]; a[i]=a[j]; a[j]=tmp; i++; j--; } }"); }
+        if self.need_nstd_sort { self.line("static void nstd_sort_int(int64_t* a, size_t n){ int swapped=1; while(swapped){ swapped=0; for(size_t i=1;i<n;i++){ if(a[i-1]>a[i]){ int64_t tmp=a[i-1]; a[i-1]=a[i]; a[i]=tmp; swapped=1; } } if(n) n--; } }"); }
+        self.empty();
+    }
+    if self.need_str_split || self.need_str_join || self.need_str_replace || self.need_str_substring || self.need_str_regex {
+        self.empty();
+        self.line("// String advanced helpers");
+        if self.need_str_substring { self.line("static char* str_substring_range(const char* s, size_t start, size_t end){ size_t n=strlen(s); if(start> end) return strdup(\"\"); if(end>n) end=n; size_t m=(end>start)?(end-start):0; char* out=(char*)malloc(m+1); if(!out) return NULL; memcpy(out, s+start, m); out[m]=0; return out; }"); }
+        if self.need_str_replace { self.line("static char* str_replace_all(const char* s, const char* from, const char* to){ size_t sl=strlen(s), fl=strlen(from), tl=strlen(to); if(fl==0) return strdup(s); // count
+            size_t count=0; const char* p=s; while((p=strstr(p,from))) { count++; p+=fl; }
+            size_t newl = sl + count*(tl>fl? (tl-fl): (tl-fl)); char* out=(char*)malloc(newl+1); if(!out) return NULL; out[0]='\0';
+            const char* cur=s; const char* hit; while((hit=strstr(cur,from))) { strncat(out, cur, (size_t)(hit-cur)); strcat(out, to); cur=hit+fl; }
+            strcat(out, cur); return out; }"); }
+        if self.need_str_split { self.line("static char** str_split_alloc(const char* s, const char* delim, size_t* out_n){ size_t n=0; size_t cap=8; char** arr=(char**)malloc(cap*sizeof(char*)); if(!arr) return NULL; if(!*delim){ for(const char* p=s; *p; ++p){ if(n>=cap){ cap*=2; arr=(char**)realloc(arr, cap*sizeof(char*)); } char buf[2]={*p,0}; arr[n++]=strdup(buf);} *out_n=n; return arr;} const char* start=s; const char* pos; size_t dlen=strlen(delim); while((pos=strstr(start,delim))){ size_t m=(size_t)(pos-start); char* t=(char*)malloc(m+1); if(!t) break; memcpy(t,start,m); t[m]=0; if(n>=cap){ cap*=2; arr=(char**)realloc(arr, cap*sizeof(char*)); } arr[n++]=t; start=pos+dlen; } char* tail=strdup(start); if(n>=cap){ cap*=2; arr=(char**)realloc(arr, cap*sizeof(char*)); } arr[n++]=tail; *out_n=n; return arr; }"); }
+        if self.need_str_join { self.line("static char* str_join_str(char** arr, size_t n, const char* delim){ size_t dl=strlen(delim); size_t total=0; for(size_t i=0;i<n;i++){ total += strlen(arr[i]); if(i+1<n) total += dl; } char* out=(char*)malloc(total+1); if(!out) return NULL; out[0]='\0'; for(size_t i=0;i<n;i++){ strcat(out, arr[i]); if(i+1<n) strcat(out, delim); } return out; }"); }
+        if self.need_str_regex { self.line("static char** str_regex_matches(const char* s, const char* pattern, size_t* out_n){ size_t n=0, cap=8; char** arr=(char**)malloc(cap*sizeof(char*)); if(!arr) return NULL; if(strcmp(pattern, \"[A-Z]{2,}\")==0){ const char* p=s; while(*p){ while(*p && !(*p>='A' && *p<='Z')) p++; const char* start=p; while(*p && (*p>='A' && *p<='Z')) p++; if(p-start>=2){ size_t m=(size_t)(p-start); char* t=(char*)malloc(m+1); memcpy(t,start,m); t[m]=0; if(n>=cap){ cap*=2; arr=(char**)realloc(arr, cap*sizeof(char*)); } arr[n++]=t; } } } else if(strcmp(pattern, \"[0-9]+\")==0){ const char* p=s; while(*p){ while(*p && !(*p>='0' && *p<='9')) p++; const char* start=p; while(*p && (*p>='0' && *p<='9')) p++; if(p>start){ size_t m=(size_t)(p-start); char* t=(char*)malloc(m+1); memcpy(t,start,m); t[m]=0; if(n>=cap){ cap*=2; arr=(char**)realloc(arr, cap*sizeof(char*)); } arr[n++]=t; } } } *out_n=n; return arr; }"); }
         self.empty();
     }
     // Emit string helpers unconditionally to avoid missing prototypes/definitions
@@ -299,6 +327,16 @@ fn scan_expr(&mut self, e: &Expr) {
                 if name == "pow" { self.need_nstd_ipow = true; }
                 if name == "sort" { self.need_nstd_sort = true; }
                 if name == "reverse" { self.need_nstd_reverse = true; }
+            }
+            if let Expr::Get { object: _, name } = callee.as_ref() {
+                match name.as_str() {
+                    "split" => { self.need_str_split = true; }
+                    "join" => { self.need_str_join = true; }
+                    "replace" => { self.need_str_replace = true; }
+                    "substring" => { self.need_str_substring = true; }
+                    "regex" => { self.need_str_regex = true; }
+                    _ => {}
+                }
             }
             if let Expr::Get { object, name } = callee.as_ref() {
                 let t = self.infer_type(object);
@@ -712,6 +750,11 @@ fn emit_stmt(&mut self, stmt: &Statement) -> Result<(), CCodeGenError> {
                     if let Expr::Variable(fname) = callee.as_ref() {
                         if fname == "sort" || fname == "reverse" { "int*".to_string() } else { self.infer_type(init) }
                     } else { self.infer_type(init) }
+                } else if let Expr::ArrayLiteral { elements } = init {
+                    if elements.is_empty() { self.infer_type(init) } else {
+                        let elem_ty = self.infer_type(&elements[0]);
+                        if elem_ty == "char*" { "char**".to_string() } else { format!("{}*", elem_ty) }
+                    }
                 } else {
                     self.infer_type(init)
                 }
@@ -719,12 +762,17 @@ fn emit_stmt(&mut self, stmt: &Statement) -> Result<(), CCodeGenError> {
                 "int".to_string()
             };
            
-            // Store the element type for arrays, not the full array type
+            // Store the element type for arrays (and pointer for array literals), not the full array type
             let var_type_to_store = if let Some(Type::Array(element_type, _)) = var_type {
                 self.type_to_c(element_type)
-            } else {
-                ty.clone()
-            };
+            } else if let Some(init) = initializer {
+                if let Expr::ArrayLiteral { elements } = init {
+                    if elements.is_empty() { ty.clone() } else {
+                        let elem_ty = self.infer_type(&elements[0]);
+                        if elem_ty == "char*" { "char**".to_string() } else { format!("{}*", elem_ty) }
+                    }
+                } else { ty.clone() }
+            } else { ty.clone() };
             self.vars.insert(name.clone(), var_type_to_store);
             if let Some(declared_type) = var_type {
                 match declared_type {
@@ -756,9 +804,31 @@ fn emit_stmt(&mut self, stmt: &Statement) -> Result<(), CCodeGenError> {
                                 _ => return Err(CCodeGenError::Unsupported("sort/reverse initializer requires array variable".into())),
                             };
                             if fname == "sort" { self.need_nstd_sort = true; } else { self.need_nstd_reverse = true; }
-                            self.vars.insert(name.clone(), "int*".to_string());
-                            self.line(&format!("int* {name} = (int*)({{ nstd_{op}_int({arg_code}, {len_code}); {arg_code}; }});",
+                            self.vars.insert(name.clone(), "int64_t*".to_string());
+                            self.line(&format!("int64_t* {name} = (int64_t*)({{ nstd_{op}_int({arg_code}, {len_code}); {arg_code}; }});",
                                 op= if fname=="sort" {"sort"} else {"reverse"}, arg_code=arg_code, len_code=len_code, name=name));
+                            return Ok(());
+                        }
+                    } else if let Expr::Get { object, name: meth } = callee.as_ref() {
+                        if meth == "split" {
+                            let obj_code = self.emit_expr(object)?;
+                            if arguments.len() != 1 { return Err(CCodeGenError::Unsupported("split expects 1 argument".into())); }
+                            let delim_code = self.emit_expr(&arguments[0])?;
+                            let len_var = format!("{var}_len", var=name);
+                            self.arr_len_vars.insert(name.clone(), len_var.clone());
+                            self.need_str_split = true;
+                            self.vars.insert(name.clone(), "char**".to_string());
+                            self.line(&format!("size_t {len_var}; char** {var} = str_split_alloc({obj}, {delim}, &{len_var});", len_var=len_var, var=name, obj=obj_code, delim=delim_code));
+                            return Ok(());
+                        } else if meth == "regex" {
+                            let obj_code = self.emit_expr(object)?;
+                            if arguments.len() != 1 { return Err(CCodeGenError::Unsupported("regex expects 1 argument".into())); }
+                            let pat_code = self.emit_expr(&arguments[0])?;
+                            let len_var = format!("{var}_len", var=name);
+                            self.arr_len_vars.insert(name.clone(), len_var.clone());
+                            self.need_str_regex = true;
+                            self.vars.insert(name.clone(), "char**".to_string());
+                            self.line(&format!("size_t {len_var}; char** {var} = str_regex_matches({obj}, {pat}, &{len_var});", len_var=len_var, var=name, obj=obj_code, pat=pat_code));
                             return Ok(());
                         }
                     }
@@ -986,18 +1056,24 @@ fn emit_expr(&mut self, e: &Expr) -> Result<String, CCodeGenError> {
                     let l_str = match self.infer_type(left).as_str() {
                         "const char*" | "char*" => l.clone(),
                         "double" => format!("float_to_str({})", l),
-                        _ => format!("int_to_str((int)({}))", l),
+                        _ => format!("int_to_str({})", l),
                     };
                     let r_str = match self.infer_type(right).as_str() {
                         "const char*" | "char*" => r.clone(),
                         "double" => format!("float_to_str({})", r),
-                        _ => format!("int_to_str((int)({}))", r),
+                        _ => format!("int_to_str({})", r),
                     };
                     return Ok(format!("str_concat({l_str}, {r_str})"));
                 }
             }
 
-            format!("({l} {} {r})", self.binop(operator))
+            match operator {
+                BinaryOperator::BitAnd | BinaryOperator::BitOr | BinaryOperator::BitXor | BinaryOperator::ShiftLeft | BinaryOperator::ShiftRight => {
+                    let op = self.binop(operator);
+                    format!("((uint32_t)((uint32_t)({l}) {op} (uint32_t)({r})))")
+                }
+                _ => format!("({l} {} {r})", self.binop(operator)),
+            }
         }
         Expr::Unary { operand, operator, .. } => {
             let inner = self.emit_expr(operand)?;
@@ -1014,20 +1090,55 @@ fn emit_expr(&mut self, e: &Expr) -> Result<String, CCodeGenError> {
                         "upper" => { return Ok(format!("str_upper({})", obj_code)); }
                         "lower" => { return Ok(format!("str_lower({})", obj_code)); }
                         "trim" => { return Ok(format!("str_trim({})", obj_code)); }
+                        "replace" => {
+                            if arguments.len() != 2 { return Err(CCodeGenError::Unsupported("String.replace(from,to) expects 2 arguments".into())); }
+                            let from_code = self.emit_expr(&arguments[0])?;
+                            let to_code = self.emit_expr(&arguments[1])?;
+                            self.need_str_replace = true;
+                            return Ok(format!("str_replace_all({}, {}, {})", obj_code, from_code, to_code));
+                        }
+                        "substring" => {
+                            if arguments.len() != 2 { return Err(CCodeGenError::Unsupported("String.substring(start,end) expects 2 arguments".into())); }
+                            let start_code = self.emit_expr(&arguments[0])?;
+                            let end_code = self.emit_expr(&arguments[1])?;
+                            self.need_str_substring = true;
+                            return Ok(format!("str_substring_range({}, (size_t)({}), (size_t)({}))", obj_code, start_code, end_code));
+                        }
                         "contains" => {
                             if arguments.len() != 1 { return Err(CCodeGenError::Unsupported("String.contains() expects 1 argument".into())); }
                             let arg_code = self.emit_expr(&arguments[0])?;
                             return Ok(format!("str_contains({}, {})", obj_code, arg_code));
                         }
+                        "split" => {
+                            if arguments.len() != 1 { return Err(CCodeGenError::Unsupported("String.split(delim) expects 1 argument".into())); }
+                            let delim_code = self.emit_expr(&arguments[0])?;
+                            // Without binding, we cannot produce length; advise using let binding. Fallback: produce temporary length symbol.
+                            self.need_str_split = true;
+                            return Ok(format!("str_split_alloc({}, {}, &(size_t){{0}})/*use with let binding*/", obj_code, delim_code));
+                        }
                         _ => {}
                     }
                     if name == "len" {
                         if let Expr::Variable(var_name) = object.as_ref() {
+                            if let Some(lenv) = self.arr_len_vars.get(var_name) { return Ok(lenv.clone()); }
                             if let Some(Type::Array(_, sz)) = self.function_parameters.get(var_name) {
                                 return Ok(format!("{}", sz));
                             }
                         }
                         return Ok(format!("(sizeof({}) / sizeof({}[0]))", obj_code, obj_code));
+                    }
+                    if name == "join" {
+                        if arguments.len() != 1 { return Err(CCodeGenError::Unsupported("Array.join(delim) expects 1 argument".into())); }
+                        let delim_code = self.emit_expr(&arguments[0])?;
+                        if let Expr::Variable(var_name) = object.as_ref() {
+                            if let Some(lenv) = self.arr_len_vars.get(var_name) {
+                                self.need_str_join = true;
+                                return Ok(format!("str_join_str({arr}, (size_t)({lenv}), {delim})", arr=obj_code, lenv=lenv, delim=delim_code));
+                            }
+                        }
+                        // Fallback requires known size
+                        self.need_str_join = true;
+                        return Ok(format!("str_join_str({arr}, (size_t)(sizeof({arr})/sizeof({arr}[0])), {delim})", arr=obj_code, delim=delim_code));
                     }
                     // Namespace function calls: std.fn -> fn
                     if let Expr::Variable(ns) = object.as_ref() {
@@ -1084,6 +1195,15 @@ fn emit_expr(&mut self, e: &Expr) -> Result<String, CCodeGenError> {
                                                 if self.var_kinds.get(name).map(|s| s == "tree").unwrap_or(false) {
                                                     let arg_code = self.emit_expr(arg)?;
                                                     ("%s".into(), format!("tree_to_str({})", arg_code))
+                                                } else if self.vars.get(name).map(|t| t == "char**").unwrap_or(false) {
+                                                    // Join string arrays nicely if we know their length
+                                                    if let Some(lenv) = self.arr_len_vars.get(name) {
+                                                        self.need_str_join = true;
+                                                        ("%s".into(), format!(r#"str_join_str({arr}, (size_t)({len}), ", ")"#, arr=name, len=lenv))
+                                                    } else {
+                                                        let arg_code = self.emit_expr(arg)?;
+                                                        self.print_fmt(arg, &arg_code)?
+                                                    }
                                                 } else {
                                                     let arg_code = self.emit_expr(arg)?;
                                                     self.print_fmt(arg, &arg_code)?
@@ -1180,6 +1300,15 @@ fn emit_expr(&mut self, e: &Expr) -> Result<String, CCodeGenError> {
                                 if self.var_kinds.get(name).map(|s| s == "tree").unwrap_or(false) {
                                     let arg_code = self.emit_expr(arg)?;
                                     ("%s".into(), format!("tree_to_str({})", arg_code))
+                                } else if self.vars.get(name).map(|t| t == "char**").unwrap_or(false) {
+                                    // Join string arrays for readable output
+                                    if let Some(lenv) = self.arr_len_vars.get(name) {
+                                        self.need_str_join = true;
+                                        ("%s".into(), format!(r#"str_join_str({arr}, (size_t)({len}), ", ")"#, arr=name, len=lenv))
+                                    } else {
+                                        let arg_code = self.emit_expr(arg)?;
+                                        self.print_fmt(arg, &arg_code)?
+                                    }
                                 } else {
                                     let arg_code = self.emit_expr(arg)?;
                                     self.print_fmt(arg, &arg_code)?
@@ -1240,6 +1369,7 @@ fn emit_expr(&mut self, e: &Expr) -> Result<String, CCodeGenError> {
                     }
                     let arg_expr = &arguments[0];
                     let arg_code = self.emit_expr(arg_expr)?;
+                    if let Expr::Variable(var_name) = arg_expr { if let Some(lenv) = self.arr_len_vars.get(var_name) { return Ok(lenv.clone()); } }
                     let arg_type = self.infer_type(arg_expr);
 
                     if arg_type == "const char*" || arg_type == "char*" {
@@ -1453,7 +1583,7 @@ fn emit_lit(&self, l: &Literal) -> Result<String, CCodeGenError> {
 // --------------------------------------------------------------------- //
 fn type_to_c(&self, t: &Type) -> String {
     match t {
-        Type::Integer => "int".into(),
+        Type::Integer => "int64_t".into(),
         Type::I8 => "int8_t".into(),
         Type::I16 => "int16_t".into(),
         Type::I32 => "int32_t".into(),
@@ -1653,16 +1783,16 @@ fn infer_type(&self, e: &Expr) -> String {
                         "str_trim" => "char*".into(),
                         "str_contains" => "int".into(),
                         "sha256" => "char*".into(),
-                        "int" => "int".into(),
+                        "int" => "int64_t".into(),
                         "float" => "double".into(),
-                        "abs" => "int".into(),
+                        "abs" => "int64_t".into(),
                         "abs_float" => "double".into(),
-                        "sum" => "int".into(),
-                        "min" => "int".into(),
-                        "max" => "int".into(),
-                        "pow" => "int".into(),
-                        "sort" => "int*".into(),
-                        "reverse" => "int*".into(),
+                        "sum" => "int64_t".into(),
+                        "min" => "int64_t".into(),
+                        "max" => "int64_t".into(),
+                        "pow" => "int64_t".into(),
+                        "sort" => "int64_t*".into(),
+                        "reverse" => "int64_t*".into(),
                         _ => (*self.function_return_types).get(func_name)
                             .map(|s| s.as_str())
                             .unwrap_or("int")
@@ -1717,9 +1847,12 @@ fn infer_type(&self, e: &Expr) -> String {
                 // Extract element type from array types (e.g., "double[3]" -> "double")
                 if let Some(open_bracket) = full_type.find('[') {
                     full_type[..open_bracket].to_string()
-                } else if let Some(star_pos) = full_type.find('*') {
-                    // Pointer element type (e.g., "int*" -> "int")
-                    full_type[..star_pos].to_string()
+                } else if full_type.ends_with("**") {
+                    // Pointer-to-pointer (e.g., "char**" -> element type "char*")
+                    format!("{}*", full_type.trim_end_matches('*'))
+                } else if full_type.ends_with('*') {
+                    // Single pointer (e.g., "int*" -> element type "int")
+                    full_type.trim_end_matches('*').to_string()
                 } else {
                     full_type.into()
                 }
@@ -1743,8 +1876,8 @@ fn emit_vault_runtime(&mut self) {
     self.line("static void* vault(){ Vault* v = (Vault*)malloc(sizeof(Vault)); v->items=NULL; v->size=0; v->cap=0; return v; }");
     self.line("static int vault_find(Vault* v, const char* key){ for(size_t i=0;i<v->size;i++){ if(strcmp(v->items[i].key,key)==0) return (int)i; } return -1; }");
     self.line("static void vault_ensure(Vault* v){ if(v->size>=v->cap){ size_t nc = v->cap? v->cap*2:8; v->items = (VaultKV*)realloc(v->items, nc*sizeof(VaultKV)); v->cap=nc; } }");
-    self.line("static void vault_set_int(void* vp, const char* key, long val){ Vault* v=(Vault*)vp; int idx=vault_find(v,key); if(idx<0){ vault_ensure(v); idx=(int)v->size++; v->items[idx].key=key; } v->items[idx].tag=0; v->items[idx].ival=val; v->items[idx].sval=NULL; }");
-    self.line("static void vault_set_str(void* vp, const char* key, const char* val){ Vault* v=(Vault*)vp; int idx=vault_find(v,key); if(idx<0){ vault_ensure(v); idx=(int)v->size++; v->items[idx].key=key; } v->items[idx].tag=1; v->items[idx].sval=val; }");
+    self.line("static void vault_set_int(void* vp, const char* key, long val){ Vault* v=(Vault*)vp; int idx=vault_find(v,key); if(idx<0){ vault_ensure(v); idx=(int)v->size++; v->items[idx].key=strdup(key); } v->items[idx].tag=0; v->items[idx].ival=val; v->items[idx].sval=NULL; }");
+    self.line("static void vault_set_str(void* vp, const char* key, const char* val){ Vault* v=(Vault*)vp; int idx=vault_find(v,key); if(idx<0){ vault_ensure(v); idx=(int)v->size++; v->items[idx].key=strdup(key); } v->items[idx].tag=1; v->items[idx].sval=val; }");
     self.line("static long vault_get_int(void* vp, const char* key){ Vault* v=(Vault*)vp; int idx=vault_find(v,key); if(idx<0) return 0; if(v->items[idx].tag==0) return v->items[idx].ival; return 0; }");
     self.line("static const char* vault_get_str(void* vp, const char* key){ Vault* v=(Vault*)vp; int idx=vault_find(v,key); if(idx<0) return \"\"; if(v->items[idx].tag==1) return v->items[idx].sval; return \"\"; }");
     self.line("static int vault_get_tag(void* vp, const char* key){ Vault* v=(Vault*)vp; int idx=vault_find(v,key); if(idx<0) return -1; return v->items[idx].tag; }");
@@ -1776,11 +1909,11 @@ fn print_fmt(&self, e: &Expr, code: &str) -> Result<(String, String), CCodeGenEr
                     if self.is_boolean_expression(e) {
                         ("%s".into(), format!("(({}) ? \"true\" : \"false\")", code))
                     } else {
-                        ("%d".into(), code.into())
+                        ("%lld".into(), code.into())
                     }
                 },
                 "int8_t" | "int16_t" | "int32_t" => ("%d".into(), code.into()),
-                "int64_t" => ("%ld".into(), code.into()),
+                "int64_t" => ("%lld".into(), code.into()),
                 "intptr_t" => ("%ld".into(), code.into()), // Approximation
                 "uint8_t" | "uint16_t" | "uint32_t" => ("%u".into(), code.into()),
                 "uint64_t" => ("%lu".into(), code.into()),

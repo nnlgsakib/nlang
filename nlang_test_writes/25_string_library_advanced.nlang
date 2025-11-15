@@ -1,0 +1,70 @@
+import std;
+
+def show_split_join() {
+    println("-- split / join --");
+    store s = "alpha,beta,gamma,delta";
+    store parts = s.split(",");
+    println("parts[0..3]:", parts[0], parts[1], parts[2], parts[3]);
+    store joined = parts.join(" | ");
+    println("joined:", joined);
+}
+
+def show_replace_substring() {
+    println("-- replace / substring --");
+    store s = "nlang string library";
+    store r = s.replace("string", "STR");
+    println("replace:", r);
+    // substring(start, end) by byte offsets
+    store sub = r.substring(6, 10);
+    println("substring(6,10):", sub);
+}
+
+def show_regex() {
+    println("-- regex --");
+    store s = "Error: ID=42, CODE=E123; Status=OK";
+    // Extract uppercase tokens
+    store caps = s.regex("[A-Z]{2,}");
+    println("caps:", caps);
+    // Extract numbers
+    store nums = s.regex("[0-9]+");
+    println("nums:", nums);
+}
+
+def show_pipeline() {
+    println("-- pipeline --");
+    // Trim, replace separators, split, uppercase, then join
+    store text = "  Alpha, Beta; Gamma  ";
+    store t = text.trim().replace(";", ",");
+    store parts = t.split(",");
+    // Normalize whitespace and uppercase
+    for (store i = 0; i < len(parts); i = i + 1) {
+        parts[i] = parts[i].trim().upper();
+    }
+    store out = parts.join(" :: ");
+    println("pipeline:", out);
+}
+
+def show_tokenize_and_counts() {
+    println("-- tokenize and count with vault --");
+    store text = "alpha beta gamma alpha beta alpha";
+    store toks = text.split(" ");
+    store counts = vault();
+    for (store i = 0; i < len(toks); i = i + 1) {
+        store k = toks[i];
+        counts[k] = counts[k] + 1;
+    }
+    println("alpha:", counts["alpha"], "beta:", counts["beta"], "gamma:", counts["gamma"]);
+}
+
+def main() {
+    println("=== String Library Advanced Demo ===");
+    show_split_join();
+    println("");
+    show_replace_substring();
+    println("");
+    show_regex();
+    println("");
+    show_pipeline();
+    println("");
+    show_tokenize_and_counts();
+}

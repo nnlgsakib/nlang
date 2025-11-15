@@ -811,6 +811,30 @@ impl SemanticAnalyzer {
                                         }
                                         return Ok(Expr::Call { callee: Box::new(Expr::Get { object: Box::new(analyzed_object), name: name.clone() }), arguments: analyzed_arguments });
                                     }
+                                    "split" => {
+                                        if analyzed_arguments.len() != 1 { return Err(SemanticError { message: "String.split(delim) expects 1 argument".to_string() }); }
+                                        let arg_t = self.infer_type(&analyzed_arguments[0])?;
+                                        if arg_t != Type::String { return Err(SemanticError { message: "String.split() delimiter must be string".to_string() }); }
+                                        return Ok(Expr::Call { callee: Box::new(Expr::Get { object: Box::new(analyzed_object), name: name.clone() }), arguments: analyzed_arguments });
+                                    }
+                                    "replace" => {
+                                        if analyzed_arguments.len() != 2 { return Err(SemanticError { message: "String.replace(from,to) expects 2 arguments".to_string() }); }
+                                        for a in &analyzed_arguments { if self.infer_type(a)? != Type::String { return Err(SemanticError { message: "String.replace() args must be strings".to_string() }); } }
+                                        return Ok(Expr::Call { callee: Box::new(Expr::Get { object: Box::new(analyzed_object), name: name.clone() }), arguments: analyzed_arguments });
+                                    }
+                                    "substring" => {
+                                        if analyzed_arguments.len() != 2 { return Err(SemanticError { message: "String.substring(start,end) expects 2 arguments".to_string() }); }
+                                        // allow integer types
+                                        let t0 = self.infer_type(&analyzed_arguments[0])?; let t1 = self.infer_type(&analyzed_arguments[1])?;
+                                        let ok_int = |t: &Type| matches!(t, Type::Integer | Type::I8 | Type::I16 | Type::I32 | Type::I64 | Type::ISize | Type::U8 | Type::U16 | Type::U32 | Type::U64 | Type::USize);
+                                        if !ok_int(&t0) || !ok_int(&t1) { return Err(SemanticError { message: "substring indices must be integer types".to_string() }); }
+                                        return Ok(Expr::Call { callee: Box::new(Expr::Get { object: Box::new(analyzed_object), name: name.clone() }), arguments: analyzed_arguments });
+                                    }
+                                    "regex" => {
+                                        if analyzed_arguments.len() != 1 { return Err(SemanticError { message: "String.regex(pattern) expects 1 argument".to_string() }); }
+                                        if self.infer_type(&analyzed_arguments[0])? != Type::String { return Err(SemanticError { message: "regex pattern must be string".to_string() }); }
+                                        return Ok(Expr::Call { callee: Box::new(Expr::Get { object: Box::new(analyzed_object), name: name.clone() }), arguments: analyzed_arguments });
+                                    }
                                     _ => {
                                         return Err(SemanticError { message: format!("Unknown string method: {}", name) });
                                     }
@@ -822,6 +846,11 @@ impl SemanticAnalyzer {
                                         if !analyzed_arguments.is_empty() {
                                             return Err(SemanticError { message: "Array.len() takes 0 arguments".to_string() });
                                         }
+                                        return Ok(Expr::Call { callee: Box::new(Expr::Get { object: Box::new(analyzed_object), name: name.clone() }), arguments: analyzed_arguments });
+                                    }
+                                    "join" => {
+                                        if analyzed_arguments.len() != 1 { return Err(SemanticError { message: "Array.join(delim) expects 1 argument".to_string() }); }
+                                        if self.infer_type(&analyzed_arguments[0])? != Type::String { return Err(SemanticError { message: "join delimiter must be string".to_string() }); }
                                         return Ok(Expr::Call { callee: Box::new(Expr::Get { object: Box::new(analyzed_object), name: name.clone() }), arguments: analyzed_arguments });
                                     }
                                     _ => {
@@ -1546,12 +1575,17 @@ impl SemanticAnalyzer {
                                 match name.as_str() {
                                     "upper" | "lower" | "trim" => Ok(Type::String),
                                     "contains" => Ok(Type::Boolean),
+                                    "split" => Ok(Type::Array(Box::new(Type::String), 0)),
+                                    "replace" => Ok(Type::String),
+                                    "substring" => Ok(Type::String),
+                                    "regex" => Ok(Type::Array(Box::new(Type::String), 0)),
                                     _ => Err(SemanticError { message: format!("Unknown string method: {}", name) }),
                                 }
                             }
                             Type::Array(_inner, _) => {
                                 match name.as_str() {
                                     "len" => Ok(Type::Integer),
+                                    "join" => Ok(Type::String),
                                     _ => Err(SemanticError { message: format!("Unknown array method: {}", name) }),
                                 }
                             }

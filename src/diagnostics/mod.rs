@@ -145,6 +145,16 @@ fn suggest(message: &str) -> Option<String> {
         Some("help: pool supports 'add(value)'".to_string())
     } else if m.contains("unknown tree method") {
         Some("help: tree supports 'add(child)'".to_string())
+    } else if m.contains("split delimiter must be string") || m.contains("join delimiter must be string") {
+        Some("help: delimiter must be a string".to_string())
+    } else if m.contains("substring start must be int") || m.contains("substring end must be int") {
+        Some("help: substring indices must be integers".to_string())
+    } else if m.contains("substring start > end") {
+        Some("help: ensure start <= end for substring".to_string())
+    } else if m.contains("regex pattern must be string") {
+        Some("help: regex pattern must be a string literal".to_string())
+    } else if m.contains("invalid regex") {
+        Some("help: check regex syntax; escape special characters properly".to_string())
     } else if m.contains("expects") && m.contains("argument") {
         Some("help: check function signature and argument count".to_string())
     } else if m.contains("expected ','") {
@@ -400,7 +410,7 @@ fn find_method_span(source: &str, method: &str) -> Option<Span> {
 }
 
 fn suggest_unknown_method(bad: &str) -> Option<String> {
-    let known = ["upper", "lower", "trim", "contains"]; 
+    let known = ["upper", "lower", "trim", "contains", "split", "replace", "substring", "regex"]; 
     let thr = if bad.len() <= 3 { 1 } else { 2 };
     let mut best: Option<(&str, usize)> = None;
     for k in known.iter() {
@@ -416,7 +426,7 @@ fn suggest_unknown_method(bad: &str) -> Option<String> {
 }
 
 fn suggest_unknown_array_method(bad: &str) -> Option<String> {
-    let known = ["len"]; 
+    let known = ["len", "join"]; 
     let thr = if bad.len() <= 3 { 1 } else { 2 };
     let mut best: Option<(&str, usize)> = None;
     for k in known.iter() {

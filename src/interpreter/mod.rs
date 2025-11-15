@@ -4,6 +4,7 @@ use crate::lexer::Lexer;
 use crate::parser::Parser;
 use std::fs;
 use crate::std_lib::nlang::std_module;
+use crate::std_lib::string as string_lib;
 pub use self::error::InterpreterError;
 pub use self::value::{Value, Function};
 pub use self::environment::Environment;
@@ -464,6 +465,33 @@ impl Interpreter {
                                         }
                                         return Ok(Value::String(s.trim().to_string()));
                                     }
+                                    "split" => {
+                                        if arguments.len() != 1 { return Err(InterpreterError::InvalidOperation { message: "String.split(delim) expects 1 argument".to_string() }); }
+                                        let delim_v = self.evaluate_expression(&arguments[0], env)?;
+                                        let delim = match delim_v { Value::String(d) => d, _ => return Err(InterpreterError::InvalidOperation { message: "split delimiter must be string".to_string() }) };
+                                        let parts = string_lib::split(&s, &delim);
+                                        return Ok(Value::Array(parts));
+                                    }
+                                    "replace" => {
+                                        if arguments.len() != 2 { return Err(InterpreterError::InvalidOperation { message: "String.replace(from,to) expects 2 arguments".to_string() }); }
+                                        let from = match self.evaluate_expression(&arguments[0], env)? { Value::String(d) => d, _ => return Err(InterpreterError::InvalidOperation { message: "replace 'from' must be string".to_string() }) };
+                                        let to = match self.evaluate_expression(&arguments[1], env)? { Value::String(d) => d, _ => return Err(InterpreterError::InvalidOperation { message: "replace 'to' must be string".to_string() }) };
+                                        let out = string_lib::replace(&s, &from, &to);
+                                        return Ok(Value::String(out));
+                                    }
+                                    "substring" => {
+                                        if arguments.len() != 2 { return Err(InterpreterError::InvalidOperation { message: "String.substring(start,end) expects 2 arguments".to_string() }); }
+                                        let start = match self.evaluate_expression(&arguments[0], env)? { Value::Integer(i) => i as usize, _ => return Err(InterpreterError::InvalidOperation { message: "substring start must be int".to_string() }) };
+                                        let end = match self.evaluate_expression(&arguments[1], env)? { Value::Integer(i) => i as usize, _ => return Err(InterpreterError::InvalidOperation { message: "substring end must be int".to_string() }) };
+                                        let out = string_lib::substring(&s, start, end).map_err(|e| InterpreterError::InvalidOperation { message: e })?;
+                                        return Ok(Value::String(out));
+                                    }
+                                    "regex" => {
+                                        if arguments.len() != 1 { return Err(InterpreterError::InvalidOperation { message: "String.regex(pattern) expects 1 argument".to_string() }); }
+                                        let pat = match self.evaluate_expression(&arguments[0], env)? { Value::String(p) => p, _ => return Err(InterpreterError::InvalidOperation { message: "regex pattern must be string".to_string() }) };
+                                        let matches = string_lib::regex_matches(&s, &pat).map_err(|e| InterpreterError::InvalidOperation { message: e })?;
+                                        return Ok(Value::Array(matches));
+                                    }
                                     "contains" => {
                                         if arguments.len() != 1 {
                                             return Err(InterpreterError::InvalidOperation { message: "String.contains() expects 1 argument".to_string() });
@@ -515,6 +543,12 @@ impl Interpreter {
                                             return Err(InterpreterError::InvalidOperation { message: "Array.len() takes 0 arguments".to_string() });
                                         }
                                         return Ok(Value::Integer(a.len() as i64));
+                                    }
+                                    "join" => {
+                                        if arguments.len() != 1 { return Err(InterpreterError::InvalidOperation { message: "Array.join(delim) expects 1 argument".to_string() }); }
+                                        let delim = match self.evaluate_expression(&arguments[0], env)? { Value::String(d) => d, _ => return Err(InterpreterError::InvalidOperation { message: "join delimiter must be string".to_string() }) };
+                                        let out = string_lib::join(&a, &delim).map_err(|e| InterpreterError::InvalidOperation { message: e })?;
+                                        return Ok(Value::String(out));
                                     }
                                     _ => {
                                         return Err(InterpreterError::InvalidOperation { message: format!("Unknown array method: {}", name) });
