@@ -1,0 +1,50 @@
+export def mod2pi(x: float) -> float {
+    store t = tau();
+    store k = int(x / t);
+    return x - float(str(k)) * t;
+}
+
+export def sin(x: float) -> float {
+    store y = mod2pi(x);
+    if (y > pi()) { y = y - tau(); }
+    if (y < 0.0 - pi()) { y = y + tau(); }
+    store signv = 1.0;
+    if (y > pi() / 2.0) { y = pi() - y; }
+    if (y < 0.0 - (pi() / 2.0)) { y = 0.0 - pi() - y; signv = 0.0 - 1.0; }
+    store y2 = y * y;
+    store term = y;
+    store sum = y;
+    store k = 1;
+    while (k <= 15) {
+        term = term * (0.0 - 1.0) * y2 / float(str(2 * k * (2 * k + 1)));
+        sum = sum + term;
+        if (abs_float(term) < 0.000000000000001) { break; }
+        k = k + 1;
+    }
+    return signv * sum;
+}
+
+export def cos(x: float) -> float {
+    store y = mod2pi(x);
+    if (y > pi()) { y = y - tau(); }
+    if (y < 0.0 - pi()) { y = y + tau(); }
+    if (y > pi() / 2.0) { y = pi() - y; }
+    if (y < 0.0 - (pi() / 2.0)) { y = 0.0 - pi() - y; }
+    store y2 = y * y;
+    store term = 1.0;
+    store sum = 1.0;
+    store k = 1;
+    while (k <= 15) {
+        term = term * (0.0 - 1.0) * y2 / float(str(2 * k * (2 * k - 1)));
+        sum = sum + term;
+        if (abs_float(term) < 0.000000000000001) { break; }
+        k = k + 1;
+    }
+    return sum;
+}
+
+export def tan(x: float) -> float {
+    store c = cos(x);
+    if (abs_float(c) < 0.0000000000000001) { return 0.0; }
+    return sin(x) / c;
+}

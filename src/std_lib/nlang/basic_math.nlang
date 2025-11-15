@@ -1,0 +1,33 @@
+export def floor(x: float) -> int {
+    store i = int(x);
+    if (float(str(i)) <= x) { return i; } else { return i - 1; }
+}
+
+export def ceil(x: float) -> int {
+    store i = int(x);
+    if (float(str(i)) >= x) { return i; } else { return i + 1; }
+}
+
+export def round(x: float) -> int {
+    store f = floor(x);
+    store frac = x - float(str(f));
+    if (frac >= 0.5) { return f + 1; } else { return f; }
+}
+
+export def clamp(x: float, a: float, b: float) -> float {
+    if (x < a) { return a; }
+    if (x > b) { return b; }
+    return x;
+}
+
+export def fmod(x: float, y: float) -> float {
+    if (y == 0.0) { return 0.0; }
+    store q = int(x / y);
+    return x - float(str(q)) * y;
+}
+
+export def sign(x: float) -> int {
+    if (x > 0.0) { return 1; }
+    if (x < 0.0) { return 0 - 1; }
+    return 0;
+}

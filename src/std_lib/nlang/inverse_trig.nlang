@@ -1,0 +1,29 @@
+export def atan(x: float) -> float {
+    if (x == 0.0) { return 0.0; }
+    store ax = abs_float(x);
+    if (ax > 1.0) {
+        store t = atan(1.0 / ax);
+        if (x > 0.0) { return (pi() / 2.0) - t; } else { return (0.0 - pi() / 2.0) + t; }
+    }
+    store term = x;
+    store sum = x;
+    store x2 = x * x;
+    store k = 1;
+    while (k <= 25) {
+        term = term * (0.0 - 1.0) * x2;
+        sum = sum + (term / float(str(2 * k + 1)));
+        if (abs_float(term) < 0.000000000000000001) { break; }
+        k = k + 1;
+    }
+    return sum;
+}
+
+export def asin(x: float) -> float {
+    if (x > 1.0) { return pi() / 2.0; }
+    if (x < 0.0 - 1.0) { return 0.0 - (pi() / 2.0); }
+    return atan(x / sqrt(1.0 - x * x));
+}
+
+export def acos(x: float) -> float {
+    return (pi() / 2.0) - asin(x);
+}

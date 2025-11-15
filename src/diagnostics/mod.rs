@@ -444,7 +444,26 @@ fn suggest_unknown_array_method(bad: &str) -> Option<String> {
 fn enrich_undefined_symbol(source: &str, message: &str) -> (Option<Span>, Option<String>) {
     if let Some((kind, name)) = extract_undefined(message) {
         let span = find_name_span(source, &name);
-        let candidates = if let Some(sp) = span.as_ref() { collect_identifiers_in_scope(source, sp.line) } else { collect_identifiers(source) };
+        let mut combined_help = String::new();
+
+        // If this is a std function, suggest importing std
+        if kind == "function" {
+            let stds = known_std_functions();
+            if stds.contains(name.as_str()) {
+                let has_import_std = source.lines().any(|l| l.trim_start().starts_with("import std"));
+                if !has_import_std {
+                    combined_help.push_str(&format!("help: '{}' is provided by the standard library. Add 'import std;' at the top", name));
+                } else {
+                    combined_help.push_str(&format!("help: '{}' is a std function. Ensure your std module is up to date", name));
+                }
+            }
+        }
+
+        // Identifier-based suggestions (edit distance); include std function names for function kind
+        let mut candidates = if let Some(sp) = span.as_ref() { collect_identifiers_in_scope(source, sp.line) } else { collect_identifiers(source) };
+        if kind == "function" {
+            for k in known_std_functions() { candidates.push(k.to_string()); }
+        }
         let mut scored: Vec<(usize, String)> = candidates
             .into_iter()
             .map(|c| (edit_distance(&name, &c), c))
@@ -472,10 +491,30 @@ fn enrich_undefined_symbol(source: &str, message: &str) -> (Option<Span>, Option
         } else {
             help.push_str(&format!("help: {} '{}' not found. Consider declaring it", kind, name));
         }
+
+        // Combine std import hint with identifier suggestions if both exist
+        if !combined_help.is_empty() {
+            help.push_str("\n   = ");
+            help.push_str(&combined_help);
+        }
+
         (span, Some(help))
     } else {
         (None, None)
     }
+}
+
+fn known_std_functions() -> std::collections::HashSet<&'static str> {
+    [
+        "pi","tau","e","ln2","ln10",
+        "exp","ln","log2","log10","pow_float","powi_float",
+        "sqrt","isqrt",
+        "sin","cos","tan","atan","asin","acos",
+        "floor","ceil","round","clamp","fmod","sign",
+        "gcd","lcm","factorial","nPr","nCr",
+        "sum_float","mean_float","median_float","variance_float","stddev_float",
+        "sum","min","max","pow","sort","reverse"
+    ].iter().cloned().collect()
 }
 
 fn extract_undefined(msg: &str) -> Option<(&'static str, String)> {

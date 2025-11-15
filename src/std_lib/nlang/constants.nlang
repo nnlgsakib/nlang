@@ -1,0 +1,5 @@
+export def pi() -> float { return 3.141592653589793; }
+export def tau() -> float { return 6.283185307179586; }
+export def e() -> float { return 2.718281828459045; }
+export def ln2() -> float { return 0.6931471805599453; }
+export def ln10() -> float { return 2.302585092994046; }

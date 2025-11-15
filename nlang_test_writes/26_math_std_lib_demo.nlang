@@ -1,0 +1,34 @@
+import std;
+def main() {
+    println("=== math std lib demo ===");
+    println("pi:", pi());
+    println("e:", e());
+    println("ln(1):", ln(1.0));
+    println("ln(e):", ln(e()));
+    println("exp(1):", exp(1.0));
+    println("log10(1000):", log10(1000.0));
+    println("log2(8):", log2(8.0));
+    println("sqrt(2):", sqrt(2.0));
+    println("pow_float(2, 3.5):", pow_float(2.0, 3.5));
+    println("sin(pi/6):", sin(pi() / 6.0));
+    println("cos(pi/3):", cos(pi() / 3.0));
+    println("tan(pi/4):", tan(pi() / 4.0));
+    println("atan(1):", atan(1.0));
+    println("asin(0.5):", asin(0.5));
+    println("acos(0.5):", acos(0.5));
+    println("floor(3.7):", floor(3.7));
+    println("ceil(3.2):", ceil(3.2));
+    println("round(3.6):", round(3.6));
+    println("fmod(7.5, 2.0):", fmod(7.5, 2.0));
+    println("gcd(48, 18):", gcd(48, 18));
+    println("lcm(21, 6):", lcm(21, 6));
+    println("factorial(6):", factorial(6));
+    println("nPr(5,3):", nPr(5,3));
+    println("nCr(5,3):", nCr(5,3));
+    store arrf:[float;5] = [1.5, 2.5, 3.0, 4.0, 5.0];
+    println("sum_float:", sum_float(arrf));
+    println("mean_float:", median_float(arrf));
+    println("median_float:", median_float(arrf));
+    println("variance_float:", variance_float(arrf));
+    println("stddev_float:", stddev_float(arrf));
+}

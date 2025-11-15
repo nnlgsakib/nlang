@@ -1,0 +1,63 @@
+export def sum_float(a) -> float {
+    store s = 0.0;
+    for (store i = 0; i < len(a); i = i + 1) { s = s + a[i]; }
+    return s;
+}
+
+export def mean_int(a) -> float {
+    store n = len(a);
+    if (n == 0) { return 0.0; }
+    store s = 0;
+    for (store i = 0; i < n; i = i + 1) { s = s + a[i]; }
+    return float(str(s)) / float(str(n));
+}
+
+export def mean_float(a) -> float {
+    store n = len(a);
+    if (n == 0) { return 0.0; }
+    return sum_float(a) / float(str(n));
+}
+
+export def median_int(a) -> float {
+    store n = len(a);
+    if (n == 0) { return 0.0; }
+    store b = a;
+    store s = sort(b);
+    store mid = int((float(str(n)) / 2.0));
+    if ((n % 2) == 1) {
+        return float(str(s[mid]));
+    } else {
+        store m1 = s[mid - 1];
+        store m2 = s[mid];
+        return (float(str(m1)) + float(str(m2))) / 2.0;
+    }
+}
+
+export def median_float(a) -> float {
+    store n = len(a);
+    if (n == 0) { return 0.0; }
+    store b = a;
+    store s = sort(b);
+    store midf = int((float(str(n)) / 2.0));
+    if ((n % 2) == 1) {
+        return s[midf];
+    } else {
+        store m1f = s[midf - 1];
+        store m2f = s[midf];
+        return (m1f + m2f) / 2.0;
+    }
+}
+
+export def variance_float(a) -> float {
+    store n = len(a);
+    if (n == 0) { return 0.0; }
+    store m = mean_float(a);
+    store s = 0.0;
+    for (store i = 0; i < n; i = i + 1) {
+        store d = a[i] - m;
+        s = s + d * d;
+    }
+    return s / float(str(n));
+}
+
+export def stddev_float(a) -> float { return sqrt(variance_float(a)); }

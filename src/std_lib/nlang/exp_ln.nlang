@@ -1,0 +1,77 @@
+export def powi_float(base: float, exp: int) -> float {
+    if (exp == 0) { return 1.0; }
+    if (exp < 0) {
+        return 1.0 / powi_float(base, 0 - exp);
+    }
+    store result = 1.0;
+    store i = 0;
+    while (i < exp) {
+        result = result * base;
+        i = i + 1;
+    }
+    return result;
+}
+
+export def exp(x: float) -> float {
+    if (x == 0.0) { return 1.0; }
+    store ln2v = ln2();
+    store n = int(x / ln2v);
+    store nf = float(str(n));
+    store r = x - nf * ln2v;
+    store term = 1.0;
+    store sum = 1.0;
+    store k = 1;
+    while (k <= 32) {
+        term = term * (r / float(str(k)));
+        sum = sum + term;
+        if (abs_float(term) < 0.000000000001) { break; }
+        k = k + 1;
+    }
+    store scale = 1.0;
+    if (n >= 0) {
+        store i = 0;
+        while (i < n) { scale = scale * 2.0; i = i + 1; }
+    } else {
+        store i = 0;
+        while (i < 0 - n) { scale = scale / 2.0; i = i + 1; }
+    }
+    return scale * sum;
+}
+
+export def ln(x: float) -> float {
+    if (x <= 0.0) { return 0.0; }
+    store ln2v = ln2();
+    store k = 0;
+    store v = x;
+    while (v > 2.0) { v = v / 2.0; k = k + 1; }
+    while (v < 0.5) { v = v * 2.0; k = k - 1; }
+    store y = (v - 1.0) / (v + 1.0);
+    store y2 = y * y;
+    store sum = 0.0;
+    store term = y;
+    store m = 1;
+    while (m <= 81) {
+        sum = sum + (term / float(str(m)));
+        term = term * y2;
+        m = m + 2;
+        if (abs_float(term) < 0.000000000001) { break; }
+    }
+    store core = 2.0 * sum;
+    return core + float(str(k)) * ln2v;
+}
+
+export def log10(x: float) -> float { return ln(x) / ln10(); }
+export def log2(x: float) -> float { return ln(x) / ln2(); }
+
+export def pow_float(base: float, expv: float) -> float {
+    if (base == 0.0) { return 0.0; }
+    if (base < 0.0) {
+        store ie = int(expv);
+        if (float(str(ie)) == expv) {
+            store r = powi_float(abs_float(base), ie);
+            if ((ie % 2) == 0) { return r; } else { return 0.0 - r; }
+        }
+        return 0.0;
+    }
+    return exp(ln(base) * expv);
+}

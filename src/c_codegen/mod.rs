@@ -1,4 +1,5 @@
 use crate::ast::*;
+
 use codemap::CodeMap;
 use std::collections::HashMap;
 use std::fmt::Write;
@@ -48,6 +49,18 @@ pub struct CCodeGenerator {
     need_str_regex: bool,
     // Track dynamic array lengths
     arr_len_vars: std::collections::HashMap<String, String>,
+    // Math std helpers flags
+    need_isqrt: bool,
+    need_gcd: bool,
+    need_lcm: bool,
+    need_factorial: bool,
+    need_npr: bool,
+    need_ncr: bool,
+    need_sumf: bool,
+    need_meanf: bool,
+    need_medianf: bool,
+    need_variancef: bool,
+    need_stddevf: bool,
 }
 impl CCodeGenerator {
     pub fn new() -> Self {
@@ -83,6 +96,17 @@ impl CCodeGenerator {
             need_str_substring: false,
             need_str_regex: false,
             arr_len_vars: Default::default(),
+            need_isqrt: false,
+            need_gcd: false,
+            need_lcm: false,
+            need_factorial: false,
+            need_npr: false,
+            need_ncr: false,
+            need_sumf: false,
+            need_meanf: false,
+            need_medianf: false,
+            need_variancef: false,
+            need_stddevf: false,
         };
         generator.line("#include <stdio.h>");
         generator.line("#include <string.h>");
@@ -93,6 +117,7 @@ impl CCodeGenerator {
         generator.line("#include <time.h>");
         generator.line("#include <locale.h>");  // For setlocale
         generator.line("#include <ctype.h>");
+        generator.line("#include <stddef.h>");
         generator.line("#ifdef _WIN32");
         generator.line("#include <windows.h>");
         generator.line("#include <io.h>");
@@ -214,6 +239,7 @@ impl CCodeGenerator {
 // Public API
 // --------------------------------------------------------------------- //
 pub fn generate_program(mut self, prog: &Program) -> Result<String, CCodeGenError> {
+    // Generate C for user program; std math is mapped to C helpers
     self.scan_features(prog);
     self.collect_strings(prog);
     self.extract_function_return_types(prog);
@@ -233,6 +259,8 @@ pub fn generate_program(mut self, prog: &Program) -> Result<String, CCodeGenErro
         if self.need_nstd_sort { self.line("static void nstd_sort_int(int64_t* a, size_t n){ int swapped=1; while(swapped){ swapped=0; for(size_t i=1;i<n;i++){ if(a[i-1]>a[i]){ int64_t tmp=a[i-1]; a[i-1]=a[i]; a[i]=tmp; swapped=1; } } if(n) n--; } }"); }
         self.empty();
     }
+    // Emit math helpers mapped functions
+    self.emit_math_helpers();
     if self.need_str_split || self.need_str_join || self.need_str_replace || self.need_str_substring || self.need_str_regex {
         self.empty();
         self.line("// String advanced helpers");
@@ -327,6 +355,20 @@ fn scan_expr(&mut self, e: &Expr) {
                 if name == "pow" { self.need_nstd_ipow = true; }
                 if name == "sort" { self.need_nstd_sort = true; }
                 if name == "reverse" { self.need_nstd_reverse = true; }
+                match name.as_str() {
+                    "isqrt" => { self.need_isqrt = true; }
+                    "gcd" => { self.need_gcd = true; }
+                    "lcm" => { self.need_lcm = true; }
+                    "factorial" => { self.need_factorial = true; }
+                    "nPr" => { self.need_npr = true; }
+                    "nCr" => { self.need_ncr = true; }
+                    "sum_float" => { self.need_sumf = true; }
+                    "mean_float" => { self.need_meanf = true; }
+                    "median_float" => { self.need_medianf = true; }
+                    "variance_float" => { self.need_variancef = true; }
+                    "stddev_float" => { self.need_stddevf = true; }
+                    _ => {}
+                }
             }
             if let Expr::Get { object: _, name } = callee.as_ref() {
                 match name.as_str() {
@@ -390,6 +432,51 @@ fn emit_sha_helpers(&mut self) {
     self.line("static char* sha256_hex_bytes(const unsigned char* data, size_t len){ unsigned char digest[32]; SHA256_CTX ctx; sha256_init(&ctx); sha256_update(&ctx, data, len); sha256_final(&ctx, digest); static const char* hex = \"0123456789abcdef\"; char* out = (char*)malloc(65); if(!out) return NULL; for(int i=0;i<32;i++){ out[i*2] = hex[(digest[i]>>4)&0xF]; out[i*2+1] = hex[digest[i]&0xF]; } out[64]=0; return out; }");
     self.line("static char* sha256_hex_str(const char* s){ return sha256_hex_bytes((const unsigned char*)s, strlen(s)); }");
     self.line("static char* sha256_random_hex(size_t n){ static int seeded=0; if(!seeded){ srand((unsigned)time(NULL)); seeded=1; } unsigned char* buf=(unsigned char*)malloc(n); if(!buf) return NULL; for(size_t i=0;i<n;i++){ buf[i]=(unsigned char)(rand()&0xFF); } char* out=sha256_hex_bytes(buf, n); free(buf); return out; }");
+}
+
+fn emit_math_helpers(&mut self) {
+    self.empty();
+    self.line("// Math helpers for std lib mapping");
+    if self.need_isqrt {
+        self.line("static long long nstd_isqrt(long long n){ if(n<=0) return 0; long long x=n; long long y=(x+1)/2; while(y<x){ x=y; y=(x + n/x)/2; } return x; }");
+    }
+    if self.need_gcd {
+        self.line("static long long nstd_gcd(long long a, long long b){ if(a<0) a=-a; if(b<0) b=-b; while(b!=0){ long long t=b; b=a%b; a=t; } return a; }");
+    }
+    if self.need_lcm {
+        // depends on gcd
+        if !self.need_gcd { self.need_gcd = true; }
+        self.line("static long long nstd_lcm(long long a, long long b){ if(a==0 || b==0) return 0; long long aa = (a<0?-a:a); long long bb=(b<0?-b:b); long long g = nstd_gcd(aa,bb); return (aa/g)*bb; }");
+    }
+    if self.need_factorial {
+        self.line("static long long nstd_factorial(long long n){ if(n<0) return 0; long long r=1; for(long long i=2;i<=n;i++) r*=i; return r; }");
+    }
+    if self.need_npr {
+        if !self.need_factorial { self.need_factorial = true; }
+        self.line("static long long nstd_nPr(long long n, long long r){ if(r<0 || r>n) return 0; double v = (double)nstd_factorial(n) / (double)nstd_factorial(n-r); return (long long)v; }");
+    }
+    if self.need_ncr {
+        self.line("static long long nstd_nCr(long long n, long long r){ if(r<0 || r>n) return 0; long long rr=r; if(rr>n-rr) rr = n-rr; long long num=1, den=1; for(long long i=1;i<=rr;i++){ num = num * (n-rr+i); den = den * i; } double v = (double)num / (double)den; return (long long)v; }");
+    }
+    if self.need_sumf {
+        self.line("static double nstd_sum_float(const double* a, size_t n){ double s=0.0; for(size_t i=0;i<n;i++){ s+=a[i]; } return s; }");
+    }
+    if self.need_meanf {
+        if !self.need_sumf { self.need_sumf = true; }
+        self.line("static double nstd_mean_float(const double* a, size_t n){ if(n==0) return 0.0; return nstd_sum_float(a,n) / (double)n; }");
+    }
+    if self.need_medianf {
+        self.line("static int cmp_double(const void* a, const void* b){ double da=*(const double*)a; double db=*(const double*)b; return (da>db)-(da<db); }");
+        self.line("static double nstd_median_float(const double* a, size_t n){ if(n==0) return 0.0; double* b=(double*)malloc(n*sizeof(double)); if(!b) return 0.0; for(size_t i=0;i<n;i++) b[i]=a[i]; qsort(b, n, sizeof(double), cmp_double); double m = (n%2==1)? b[n/2] : 0.5*(b[n/2-1] + b[n/2]); free(b); return m; }");
+    }
+    if self.need_variancef {
+        if !self.need_meanf { self.need_meanf = true; }
+        self.line("static double nstd_variance_float(const double* a, size_t n){ if(n==0) return 0.0; double m = nstd_mean_float(a,n); double s=0.0; for(size_t i=0;i<n;i++){ double d=a[i]-m; s += d*d; } return s / (double)n; }");
+    }
+    if self.need_stddevf {
+        if !self.need_variancef { self.need_variancef = true; }
+        self.line("static double nstd_stddev_float(const double* a, size_t n){ return sqrt(nstd_variance_float(a,n)); }");
+    }
 }
 fn emit_str_upper(&mut self) {
     self.line("static char* str_upper(const char* s){");
@@ -1423,6 +1510,42 @@ fn emit_expr(&mut self, e: &Expr) -> Result<String, CCodeGenError> {
                     let ncode = self.emit_expr(&arguments[0])?;
                     return Ok(format!("sha256_random_hex((size_t)({}))", ncode));
                 }
+                // Math std mappings
+                "pi" => { return Ok("acos(-1.0)".into()); }
+                "tau" => { return Ok("(2.0*acos(-1.0))".into()); }
+                "e" => { return Ok("exp(1.0)".into()); }
+                "ln2" => { return Ok("log(2.0)".into()); }
+                "ln10" => { return Ok("log(10.0)".into()); }
+                "exp" => { let x=self.emit_expr(&arguments[0])?; return Ok(format!("exp({})", x)); }
+                "ln" => { let x=self.emit_expr(&arguments[0])?; return Ok(format!("log({})", x)); }
+                "log2" => { let x=self.emit_expr(&arguments[0])?; return Ok(format!("log2({})", x)); }
+                "log10" => { let x=self.emit_expr(&arguments[0])?; return Ok(format!("log10({})", x)); }
+                "pow_float" => { if arguments.len()!=2 { return Err(CCodeGenError::Unsupported("pow_float(a,b) expects 2 args".into())); } let a=self.emit_expr(&arguments[0])?; let b=self.emit_expr(&arguments[1])?; return Ok(format!("pow({}, {})", a,b)); }
+                "powi_float" => { if arguments.len()!=2 { return Err(CCodeGenError::Unsupported("powi_float(a,n) expects 2 args".into())); } let a=self.emit_expr(&arguments[0])?; let n=self.emit_expr(&arguments[1])?; return Ok(format!("pow({}, (double)({}))", a,n)); }
+                "sqrt" => { let x=self.emit_expr(&arguments[0])?; return Ok(format!("sqrt({})", x)); }
+                "isqrt" => { self.need_isqrt=true; let x=self.emit_expr(&arguments[0])?; return Ok(format!("nstd_isqrt({})", x)); }
+                "sin" => { let x=self.emit_expr(&arguments[0])?; return Ok(format!("sin({})", x)); }
+                "cos" => { let x=self.emit_expr(&arguments[0])?; return Ok(format!("cos({})", x)); }
+                "tan" => { let x=self.emit_expr(&arguments[0])?; return Ok(format!("tan({})", x)); }
+                "atan" => { let x=self.emit_expr(&arguments[0])?; return Ok(format!("atan({})", x)); }
+                "asin" => { let x=self.emit_expr(&arguments[0])?; return Ok(format!("asin({})", x)); }
+                "acos" => { let x=self.emit_expr(&arguments[0])?; return Ok(format!("acos({})", x)); }
+                "floor" => { let x=self.emit_expr(&arguments[0])?; return Ok(format!("(int64_t)floor({})", x)); }
+                "ceil" => { let x=self.emit_expr(&arguments[0])?; return Ok(format!("(int64_t)ceil({})", x)); }
+                "round" => { let x=self.emit_expr(&arguments[0])?; return Ok(format!("(int64_t)round({})", x)); }
+                "clamp" => { if arguments.len()!=3 { return Err(CCodeGenError::Unsupported("clamp(x,a,b) expects 3 args".into())); } let x=self.emit_expr(&arguments[0])?; let a=self.emit_expr(&arguments[1])?; let b=self.emit_expr(&arguments[2])?; return Ok(format!("((({x})<({a}))?({a}):((({x})>({b}))?({b}):({x}))))", x=x,a=a,b=b)); }
+                "fmod" => { let x=self.emit_expr(&arguments[0])?; let y=self.emit_expr(&arguments[1])?; return Ok(format!("fmod({}, {})", x,y)); }
+                "sign" => { let x=self.emit_expr(&arguments[0])?; return Ok(format!("(({}>0.0)?1:(({}<0.0)?-1:0))", x,x)); }
+                "gcd" => { self.need_gcd=true; let a=self.emit_expr(&arguments[0])?; let b=self.emit_expr(&arguments[1])?; return Ok(format!("nstd_gcd({}, {})", a,b)); }
+                "lcm" => { self.need_lcm=true; let a=self.emit_expr(&arguments[0])?; let b=self.emit_expr(&arguments[1])?; return Ok(format!("nstd_lcm({}, {})", a,b)); }
+                "factorial" => { self.need_factorial=true; let n=self.emit_expr(&arguments[0])?; return Ok(format!("nstd_factorial({})", n)); }
+                "nPr" => { self.need_npr=true; let n=self.emit_expr(&arguments[0])?; let r=self.emit_expr(&arguments[1])?; return Ok(format!("nstd_nPr({}, {})", n,r)); }
+                "nCr" => { self.need_ncr=true; let n=self.emit_expr(&arguments[0])?; let r=self.emit_expr(&arguments[1])?; return Ok(format!("nstd_nCr({}, {})", n,r)); }
+                "sum_float" => { self.need_sumf=true; let arr=self.emit_expr(&arguments[0])?; let len=format!("(sizeof({})/sizeof({}[0]))", arr, arr); return Ok(format!("nstd_sum_float({}, {})", arr, len)); }
+                "mean_float" => { self.need_meanf=true; let arr=self.emit_expr(&arguments[0])?; let len=format!("(sizeof({})/sizeof({}[0]))", arr, arr); return Ok(format!("nstd_mean_float({}, {})", arr, len)); }
+                "median_float" => { self.need_medianf=true; let arr=self.emit_expr(&arguments[0])?; let len=format!("(sizeof({})/sizeof({}[0]))", arr, arr); return Ok(format!("nstd_median_float({}, {})", arr, len)); }
+                "variance_float" => { self.need_variancef=true; let arr=self.emit_expr(&arguments[0])?; let len=format!("(sizeof({})/sizeof({}[0]))", arr, arr); return Ok(format!("nstd_variance_float({}, {})", arr, len)); }
+                "stddev_float" => { self.need_stddevf=true; let arr=self.emit_expr(&arguments[0])?; let len=format!("(sizeof({})/sizeof({}[0]))", arr, arr); return Ok(format!("nstd_stddev_float({}, {})", arr, len)); }
                 _ => {}
             }
             if fname == "vault" {
@@ -1793,6 +1916,13 @@ fn infer_type(&self, e: &Expr) -> String {
                         "pow" => "int64_t".into(),
                         "sort" => "int64_t*".into(),
                         "reverse" => "int64_t*".into(),
+                        // math std return types
+                        "pi" | "tau" | "e" | "ln2" | "ln10" => "double".into(),
+                        "exp" | "ln" | "log2" | "log10" | "sqrt" | "sin" | "cos" | "tan" | "atan" | "asin" | "acos" | "clamp" | "fmod" => "double".into(),
+                        "pow_float" | "powi_float" => "double".into(),
+                        "isqrt" | "floor" | "ceil" | "round" | "sign" => "int64_t".into(),
+                        "gcd" | "lcm" | "factorial" | "nPr" | "nCr" => "int64_t".into(),
+                        "sum_float" | "mean_float" | "median_float" | "variance_float" | "stddev_float" => "double".into(),
                         _ => (*self.function_return_types).get(func_name)
                             .map(|s| s.as_str())
                             .unwrap_or("int")
